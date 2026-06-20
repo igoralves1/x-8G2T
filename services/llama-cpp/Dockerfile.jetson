@@ -1,0 +1,37 @@
+# =============================================================================
+# Shared llama.cpp inference server for the Jetson Orin Nano (CUDA / Ampere).
+# One image, three roles selected at runtime via $SERVER_MODE:
+#   - llm    : text reasoning model (chat/completions)
+#   - vlm    : vision-language model (uses an mmproj projector)
+#   - embed  : embedding model (/v1/embeddings)
+#
+# CUDA is already present in the l4t-jetpack base image, so we only compile
+# llama.cpp against it (GGML_CUDA=on).  The Orin Nano is sm_87.
+# =============================================================================
+FROM nvcr.io/nvidia/l4t-jetpack:r36.3.0
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git cmake build-essential ccache curl libcurl4-openssl-dev libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Build llama.cpp with CUDA for the Orin Nano (compute capability 8.7) ----
+ARG LLAMACPP_REF=master
+RUN git clone --depth 1 --branch ${LLAMACPP_REF} \
+        https://github.com/ggml-org/llama.cpp /opt/llama.cpp
+WORKDIR /opt/llama.cpp
+RUN cmake -B build \
+        -DGGML_CUDA=ON \
+        -DCMAKE_CUDA_ARCHITECTURES=87 \
+        -DLLAMA_CURL=ON \
+        -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build --config Release -j"$(nproc)" --target llama-server && \
+    cp build/bin/llama-server /usr/local/bin/llama-server && \
+    rm -rf /opt/llama.cpp/build
+
+WORKDIR /models
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

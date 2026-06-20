@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  - name: X8G2T-Postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: ${POSTGRES_USER}
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      database: ${POSTGRES_DB}
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    isDefault: true
+    editable: true
+
+# To visualize raw time-series directly from IoTDB, install the official
+# Apache IoTDB Grafana plugin and add a datasource here pointing at the IoTDB
+# Grafana connector. The agent tools already read IoTDB via its REST API on
+# :18080, and Grafana's primary panels query PostgreSQL above.

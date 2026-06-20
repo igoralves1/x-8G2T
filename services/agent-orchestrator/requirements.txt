@@ -1,0 +1,25 @@
+# Agent Orchestrator dependencies (CPU-only; inference is remote over HTTP)
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+pydantic-settings==2.3.4
+httpx==0.27.0
+python-dotenv==1.0.1
+loguru==0.7.2
+
+# Postgres (sync + async)
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# Vector store
+qdrant-client==1.11.3
+
+# Model Context Protocol client (talks to the local SPC MCP server)
+mcp==1.9.4
+
+# Numerics for the time-series tool
+numpy==1.26.4
+scipy==1.13.1
+
+# Auth
+python-jose[cryptography]==3.3.0

@@ -1,0 +1,2 @@
+# Generated TLS material lives here (ca.crt, server.crt/key, client.crt/key).
+# Run ./generate-certs.sh to populate. The *.key/*.crt files are git-ignored.

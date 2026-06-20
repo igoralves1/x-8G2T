@@ -150,6 +150,16 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# X-8G2T: generated TLS material (keep scripts + .gitkeep)
+ssl/*.crt
+ssl/*.key
+ssl/*.csr
+ssl/*.srl
+
+# X-8G2T: downloaded model weights
+models/
+*.gguf
 .venv
 env/
 venv/

@@ -1,0 +1,19 @@
+# =============================================================================
+# RAG Indexer - one-shot job that ingests the knowledge base into Qdrant.
+# Lightweight CPU container; embedding compute happens on the GPU embeddings
+# server over HTTP.
+# =============================================================================
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq-dev gcc && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY indexer.py .
+
+CMD ["python", "indexer.py"]
