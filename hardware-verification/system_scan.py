@@ -16,7 +16,7 @@ Step | What it Tests              | Why it Matters
   6  | Network                    | Verifies connectivity, IPs, speed, DNS
   7  | PyTorch installation       | Ensures the AI framework is installed
   8  | CUDA availability          | Confirms GPU drivers work with PyTorch
-  9  | GPU detection              | Identifies your RTX 5080 and its specs
+  9  | GPU detection              | Identifies your GPU and its specs
  10  | Basic GPU computation      | Verifies the GPU can do math correctly
  11  | GPU Performance            | Benchmarks your GPU's speed
  12  | GPU Memory allocation      | Tests VRAM allocation and limits
@@ -50,12 +50,34 @@ import re
 # Get the directory where this script is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Detect OS at the very beginning - this guides all platform-specific steps
+OS_TYPE = platform.system()
+IS_WINDOWS = OS_TYPE == "Windows"
+IS_LINUX = OS_TYPE == "Linux"
+IS_MACOS = OS_TYPE == "Darwin"
+IS_JETSON = IS_LINUX and os.path.exists('/etc/nv_tegra_release')  # Jetson Nano detection
+
+# Scan timing variables - captured at script start
+SCAN_START_TIME = datetime.datetime.now()
+SCAN_START_TIMESTAMP = SCAN_START_TIME.isoformat()
+SCAN_START_STR = SCAN_START_TIME.strftime('%Y-%m-%d %H:%M:%S')
+
 # Global dictionary to store all report data
 REPORT_DATA = {
-    "scan_timestamp": "",
+    "scan_start_time": SCAN_START_TIMESTAMP,
+    "scan_end_time": None,
+    "scan_duration_seconds": None,
+    "os_info": {
+        "type": OS_TYPE,
+        "is_windows": IS_WINDOWS,
+        "is_linux": IS_LINUX,
+        "is_macos": IS_MACOS,
+        "is_jetson": IS_JETSON
+    },
     "system": {},
     "cpu": {},
     "bios": {},
+    "motherboard": {},
     "memory": {},
     "storage": {},
     "network": {},
@@ -99,7 +121,7 @@ def check_and_install_libraries():
     # Determine which libraries are needed based on OS
     needed_libs = {}
     for lib, package in REQUIRED_LIBRARIES.items():
-        if lib == 'wmi' and platform.system() != "Windows":
+        if lib == 'wmi' and not IS_WINDOWS:
             continue  # Skip wmi on non-Windows
         needed_libs[lib] = package
     
@@ -329,7 +351,8 @@ def check_nvidia_smi():
                                     print(f"    Process: ⚠️  Insufficient permissions to view process name")
                                     print(f"    Used Memory: {mem}")
                                     print("    💡 Run terminal as Administrator to see process names")
-                                    print("    💡 On Windows: Right-click terminal -> Run as administrator")
+                                    if IS_WINDOWS:
+                                        print("    💡 On Windows: Right-click terminal -> Run as administrator")
                                 else:
                                     print(f"    PID: {pid}")
                                     print(f"    Process: {proc_name}")
@@ -416,6 +439,14 @@ def run_command(cmd):
     except:
         return None
 
+def run_command_no_shell(cmd):
+    """Run a system command without shell and return output"""
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+    except:
+        return None
+
 def get_size(bytes, suffix="B"):
     """Convert bytes to human readable format"""
     factor = 1024
@@ -451,7 +482,7 @@ def print_table_header():
     print("  6   | Network                    | Verifies connectivity, IPs, speed, DNS")
     print("  7   | PyTorch installation       | Ensures the AI framework is installed")
     print("  8   | CUDA availability          | Confirms GPU drivers work with PyTorch")
-    print("  9   | GPU detection              | Identifies your RTX 5080 and its specs")
+    print("  9   | GPU detection              | Identifies your GPU and its specs")
     print(" 10   | Basic GPU computation      | Verifies the GPU can do math correctly")
     print(" 11   | GPU Performance            | Benchmarks your GPU's speed")
     print(" 12   | GPU Memory allocation      | Tests VRAM allocation and limits")
@@ -476,13 +507,21 @@ def print_notes(step_num, notes):
 def save_json_report():
     """Save the collected report data to a JSON file in the script directory"""
     try:
-        # Add timestamp
-        REPORT_DATA["scan_timestamp"] = datetime.datetime.now().isoformat()
+        # Update end time and duration
+        end_time = datetime.datetime.now()
+        REPORT_DATA["scan_end_time"] = end_time.isoformat()
+        REPORT_DATA["scan_duration_seconds"] = (end_time - SCAN_START_TIME).total_seconds()
         
         # Save to file in the script directory
         filename = os.path.join(SCRIPT_DIR, "system_scan_report.json")
         with open(filename, 'w') as f:
             json.dump(REPORT_DATA, f, indent=2, default=str)
+        
+        # Print timing summary
+        print(f"\n⏱️  Scan Timing:")
+        print(f"   Started: {SCAN_START_STR}")
+        print(f"   Ended:   {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"   Duration: {REPORT_DATA['scan_duration_seconds']:.2f} seconds")
         
         print(f"\n📄 JSON report saved to: {filename}")
         print(f"   File size: {get_size(os.path.getsize(filename))}")
@@ -490,6 +529,265 @@ def save_json_report():
     except Exception as e:
         print(f"\n⚠️  Failed to save JSON report: {e}")
         return None
+
+def detect_jetson():
+    """Detect if running on NVIDIA Jetson Nano"""
+    return IS_LINUX and os.path.exists('/etc/nv_tegra_release')
+
+def is_rpi():
+    """Detect if running on Raspberry Pi"""
+    if IS_LINUX:
+        try:
+            with open('/proc/cpuinfo', 'r') as f:
+                return 'Raspberry Pi' in f.read()
+        except:
+            pass
+    return False
+
+# =============================================================================
+# PLATFORM-SPECIFIC HARDWARE DETECTION
+# =============================================================================
+
+def get_platform_specific_info():
+    """Get platform-specific hardware information (BIOS, motherboard, network)"""
+    
+    if IS_WINDOWS:
+        return get_windows_hardware_info()
+    elif IS_LINUX:
+        return get_linux_hardware_info()
+    elif IS_MACOS:
+        return get_macos_hardware_info()
+    else:
+        return {"error": f"Unsupported OS: {OS_TYPE}"}
+
+def filter_sensitive_data(data, sensitive_keys):
+    """Filter sensitive data from dictionaries"""
+    if isinstance(data, dict):
+        filtered = {}
+        for key, value in data.items():
+            if key in sensitive_keys:
+                filtered[key] = "[FILTERED]"
+            else:
+                filtered[key] = filter_sensitive_data(value, sensitive_keys)
+        return filtered
+    elif isinstance(data, list):
+        return [filter_sensitive_data(item, sensitive_keys) for item in data]
+    else:
+        return data
+
+def get_windows_hardware_info():
+    """Get Windows-specific hardware information"""
+    info = {
+        "bios": {},
+        "motherboard": {},
+        "network_adapters": [],
+        "wifi_interfaces": []
+    }
+    
+    try:
+        import wmi
+        c = wmi.WMI()
+        
+        # BIOS Information
+        for bios in c.Win32_BIOS():
+            info["bios"] = {
+                "name": bios.Name if hasattr(bios, 'Name') else None,
+                "version": bios.SMBIOSBIOSVersion if hasattr(bios, 'SMBIOSBIOSVersion') else None,
+                "manufacturer": bios.Manufacturer if hasattr(bios, 'Manufacturer') else None,
+                "release_date": str(bios.ReleaseDate) if hasattr(bios, 'ReleaseDate') else None,
+                "smbios_version": f"{bios.SMBIOSMajorVersion}.{bios.SMBIOSMinorVersion}" if hasattr(bios, 'SMBIOSMajorVersion') else None,
+                "serial_number": "[FILTERED]" if hasattr(bios, 'SerialNumber') else None
+            }
+            break
+        
+        # Motherboard Information
+        for board in c.Win32_BaseBoard():
+            info["motherboard"] = {
+                "manufacturer": board.Manufacturer if hasattr(board, 'Manufacturer') else None,
+                "product": board.Product if hasattr(board, 'Product') else None,
+                "version": board.Version if hasattr(board, 'Version') else None,
+                "serial_number": "[FILTERED]" if hasattr(board, 'SerialNumber') else None,
+                "tag": board.Tag if hasattr(board, 'Tag') else None
+            }
+            break
+        
+        # Network Adapters
+        for adapter in c.Win32_NetworkAdapter():
+            if adapter.Name and adapter.InterfaceDescription:
+                info["network_adapters"].append({
+                    "name": adapter.Name if hasattr(adapter, 'Name') else None,
+                    "description": adapter.InterfaceDescription if hasattr(adapter, 'InterfaceDescription') else None,
+                    "status": adapter.Status if hasattr(adapter, 'Status') else None,
+                    "mac_address": adapter.MACAddress if hasattr(adapter, 'MACAddress') else None,
+                    "speed": adapter.Speed if hasattr(adapter, 'Speed') else None
+                })
+        
+    except Exception as e:
+        info["error"] = f"Failed to get Windows hardware info: {e}"
+    
+    # Get Wi-Fi info using netsh
+    try:
+        wifi_output = run_command("netsh wlan show interfaces")
+        if wifi_output:
+            wifi_info = {}
+            for line in wifi_output.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    wifi_info[key.strip()] = value.strip()
+            if wifi_info:
+                info["wifi_interfaces"].append(wifi_info)
+    except:
+        pass
+    
+    # Get Wi-Fi adapters using Get-NetAdapter
+    try:
+        netadapter_output = run_command("powershell -Command \"Get-NetAdapter | Select-Object Name, InterfaceDescription, Status, NetworkInterfaceType\"")
+        if netadapter_output:
+            for line in netadapter_output.split('\n'):
+                if line.strip() and not line.startswith('Name'):
+                    parts = line.split()
+                    if parts:
+                        info["network_adapters"].append({
+                            "name": parts[0] if parts else None,
+                            "status": "Up" if "Up" in line else "Down"
+                        })
+    except:
+        pass
+    
+    return info
+
+def get_linux_hardware_info():
+    """Get Linux-specific hardware information"""
+    info = {
+        "bios": {},
+        "motherboard": {},
+        "network_adapters": [],
+        "wifi_interfaces": []
+    }
+    
+    try:
+        # BIOS Information
+        bios_output = run_command("sudo dmidecode -t bios 2>/dev/null")
+        if bios_output:
+            bios_data = {}
+            for line in bios_output.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    bios_data[key.strip()] = value.strip()
+            info["bios"] = {
+                "vendor": bios_data.get('Vendor'),
+                "version": bios_data.get('Version'),
+                "release_date": bios_data.get('Release Date'),
+                "serial_number": "[FILTERED]"
+            }
+    except:
+        pass
+    
+    try:
+        # Motherboard Information
+        board_output = run_command("sudo dmidecode -t baseboard 2>/dev/null")
+        if board_output:
+            board_data = {}
+            for line in board_output.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    board_data[key.strip()] = value.strip()
+            info["motherboard"] = {
+                "manufacturer": board_data.get('Manufacturer'),
+                "product": board_data.get('Product Name'),
+                "version": board_data.get('Version'),
+                "serial_number": "[FILTERED]"
+            }
+    except:
+        pass
+    
+    try:
+        # Network interfaces
+        net_output = run_command("ip link show")
+        if net_output:
+            for line in net_output.split('\n'):
+                if ':' in line and not '@' in line:
+                    parts = line.split(':')
+                    if len(parts) >= 2:
+                        info["network_adapters"].append({
+                            "name": parts[1].strip(),
+                            "status": "Up" if "UP" in line else "Down"
+                        })
+    except:
+        pass
+    
+    try:
+        # Wi-Fi info
+        wifi_output = run_command("iwconfig 2>/dev/null")
+        if wifi_output:
+            wifi_info = {}
+            for line in wifi_output.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    wifi_info[key.strip()] = value.strip()
+            if wifi_info:
+                info["wifi_interfaces"].append(wifi_info)
+    except:
+        pass
+    
+    return info
+
+def get_macos_hardware_info():
+    """Get macOS-specific hardware information"""
+    info = {
+        "bios": {},
+        "motherboard": {},
+        "network_adapters": [],
+        "wifi_interfaces": []
+    }
+    
+    try:
+        # System Information
+        sysinfo = run_command("system_profiler SPHardwareDataType")
+        if sysinfo:
+            hardware_data = {}
+            for line in sysinfo.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    hardware_data[key.strip()] = value.strip()
+            info["bios"] = {
+                "version": hardware_data.get('Boot ROM Version'),
+                "serial_number": "[FILTERED]"
+            }
+    except:
+        pass
+    
+    try:
+        # Network interfaces
+        net_output = run_command("ifconfig")
+        if net_output:
+            interface_names = []
+            for line in net_output.split('\n'):
+                if line and not line.startswith(' '):
+                    interface_names.append(line.split(':')[0])
+            for name in interface_names:
+                info["network_adapters"].append({
+                    "name": name,
+                    "status": "Available"
+                })
+    except:
+        pass
+    
+    try:
+        # Wi-Fi info
+        wifi_output = run_command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null")
+        if wifi_output:
+            wifi_info = {}
+            for line in wifi_output.split('\n'):
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    wifi_info[key.strip()] = value.strip()
+            if wifi_info:
+                info["wifi_interfaces"].append(wifi_info)
+    except:
+        pass
+    
+    return info
 
 # =============================================================================
 # STEP 1: SYSTEM OVERVIEW
@@ -500,14 +798,21 @@ def get_system_info():
     print_section("STEP 1: SYSTEM OVERVIEW")
     print("-" * 50)
     
-    notes = """
+    notes = f"""
     This shows your system basics: OS, machine type, hostname, boot time, and Python version.
+    
+    OS Detected: {OS_TYPE}
+    Windows: {IS_WINDOWS}
+    Linux: {IS_LINUX}
+    macOS: {IS_MACOS}
+    Jetson: {IS_JETSON}
+    
     This helps identify your environment and ensure compatibility with AI tools.
     """
     print_notes(1, notes)
     
     system_info = {
-        "os": platform.system(),
+        "os": OS_TYPE,
         "release": platform.release(),
         "version": platform.version(),
         "machine": platform.machine(),
@@ -515,17 +820,22 @@ def get_system_info():
         "hostname": socket.gethostname(),
         "boot_time": datetime.datetime.fromtimestamp(psutil.boot_time()).strftime('%Y-%m-%d %H:%M:%S'),
         "python_version": sys.version,
-        "script_run": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        "script_run": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "is_windows": IS_WINDOWS,
+        "is_linux": IS_LINUX,
+        "is_macos": IS_MACOS,
+        "is_jetson": IS_JETSON
     }
     REPORT_DATA["system"] = system_info
     
-    print(f"  System: {platform.system()} {platform.release()} ({platform.version})")
+    print(f"  System: {OS_TYPE} {platform.release()} ({platform.version})")
     print(f"  Machine: {platform.machine()}")
     print(f"  Processor: {platform.processor()}")
     print(f"  Hostname: {socket.gethostname()}")
     print(f"  Boot Time: {datetime.datetime.fromtimestamp(psutil.boot_time()).strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  Python Version: {sys.version}")
     print(f"  Script Run: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Jetson Detected: {IS_JETSON}")
 
 # =============================================================================
 # STEP 2: CPU INFORMATION
@@ -593,7 +903,7 @@ def get_cpu_info():
         except:
             pass
     
-    if HAS_WMI and platform.system() == "Windows":
+    if IS_WINDOWS and HAS_WMI:
         try:
             c = wmi.WMI()
             for cpu in c.Win32_Processor():
@@ -611,7 +921,7 @@ def get_cpu_info():
         except:
             pass
     
-    if platform.system() == "Windows":
+    if IS_WINDOWS:
         virt = run_command("systeminfo | findstr /I 'virtualization'")
         if virt:
             cpu_data["virtualization_cmd"] = virt
@@ -619,8 +929,13 @@ def get_cpu_info():
     
     is_vm = False
     try:
-        if platform.system() == "Windows":
+        if IS_WINDOWS:
             is_vm = "Virtual" in run_command("wmic computersystem get model") or "VMware" in run_command("wmic computersystem get model")
+        elif IS_LINUX:
+            if os.path.exists('/proc/cpuinfo'):
+                with open('/proc/cpuinfo', 'r') as f:
+                    if 'hypervisor' in f.read():
+                        is_vm = True
     except:
         pass
     cpu_data["running_in_vm"] = is_vm
@@ -645,38 +960,44 @@ def get_bios_info():
     
     bios_data = {}
     
-    if platform.system() == "Windows":
-        if HAS_WMI:
-            try:
-                c = wmi.WMI()
-                for bios in c.Win32_BIOS():
-                    bios_data["manufacturer"] = bios.Manufacturer
-                    bios_data["name"] = bios.Name
-                    bios_data["version"] = bios.SMBIOSBIOSVersion
-                    bios_data["date"] = bios.ReleaseDate
-                    bios_data["serial_number"] = bios.SerialNumber
-                    bios_data["smbios_major"] = bios.SMBIOSMajorVersion
-                    bios_data["smbios_minor"] = bios.SMBIOSMinorVersion
-                    print(f"  Manufacturer: {bios.Manufacturer}")
-                    print(f"  Name: {bios.Name}")
-                    print(f"  Version: {bios.SMBIOSBIOSVersion}")
+    if IS_WINDOWS and HAS_WMI:
+        try:
+            c = wmi.WMI()
+            for bios in c.Win32_BIOS():
+                bios_data["manufacturer"] = bios.Manufacturer
+                bios_data["name"] = bios.Name
+                bios_data["version"] = bios.SMBIOSBIOSVersion
+                bios_data["date"] = str(bios.ReleaseDate) if bios.ReleaseDate else None
+                bios_data["smbios_major"] = bios.SMBIOSMajorVersion
+                bios_data["smbios_minor"] = bios.SMBIOSMinorVersion
+                print(f"  Manufacturer: {bios.Manufacturer}")
+                print(f"  Name: {bios.Name}")
+                print(f"  Version: {bios.SMBIOSBIOSVersion}")
+                if bios.ReleaseDate:
                     print(f"  Date: {bios.ReleaseDate}")
-                    print(f"  Serial Number: {bios.SerialNumber}")
-                    print(f"  SMBIOS Version: {bios.SMBIOSMajorVersion}.{bios.SMBIOSMinorVersion}")
-                    break
-            except:
-                pass
-        
+                print(f"  SMBIOS Version: {bios.SMBIOSMajorVersion}.{bios.SMBIOSMinorVersion}")
+                break
+        except:
+            pass
+    
+    if IS_WINDOWS:
         bios_info = run_command("systeminfo | findstr /I 'BIOS'")
         if bios_info:
             bios_data["systeminfo"] = bios_info
             for line in bios_info.split('\n'):
                 print(f"  {line.strip()}")
     
-    elif platform.system() == "Linux":
+    elif IS_LINUX:
         bios_info = run_command("sudo dmidecode -t bios 2>/dev/null | grep -E 'Vendor|Version|Release Date'")
         if bios_info:
             bios_data["dmidecode"] = bios_info
+            for line in bios_info.split('\n'):
+                print(f"  {line.strip()}")
+    
+    elif IS_MACOS:
+        bios_info = run_command("system_profiler SPHardwareDataType | grep -E 'Boot ROM Version|SMC Version'")
+        if bios_info:
+            bios_data["system_profiler"] = bios_info
             for line in bios_info.split('\n'):
                 print(f"  {line.strip()}")
     
@@ -717,7 +1038,7 @@ def get_memory_info():
     print(f"  Used RAM: {get_size(mem.used)}")
     print(f"  RAM Usage: {mem.percent}%")
     
-    if platform.system() == "Windows" and HAS_WMI:
+    if IS_WINDOWS and HAS_WMI:
         try:
             c = wmi.WMI()
             total_speed = 0
@@ -824,7 +1145,7 @@ def get_storage_info():
         print(f"  Read Time: {io_counters.read_time} ms")
         print(f"  Write Time: {io_counters.write_time} ms")
     
-    if platform.system() == "Windows" and HAS_WMI:
+    if IS_WINDOWS and HAS_WMI:
         print_subsection("Physical Disk Details")
         try:
             c = wmi.WMI()
@@ -834,7 +1155,6 @@ def get_storage_info():
                     "interface": disk.InterfaceType,
                     "media_type": disk.MediaType,
                     "size": disk.Size,
-                    "serial_number": disk.SerialNumber,
                     "partitions": disk.Partitions
                 }
                 storage_data["physical_disks"].append(disk_info)
@@ -842,29 +1162,19 @@ def get_storage_info():
                 print(f"    Interface: {disk.InterfaceType}")
                 print(f"    Media Type: {disk.MediaType}")
                 print(f"    Size: {get_size(int(disk.Size)) if disk.Size else 'Unknown'}")
-                print(f"    Serial Number: {disk.SerialNumber}")
                 print(f"    Partitions: {disk.Partitions}")
                 print()
         except:
             pass
     
-    if platform.system() == "Windows":
-        print_subsection("Drive Type Detection")
-        try:
-            for partition in partitions:
-                if partition.device:
-                    device = partition.device.replace('\\', '')
-                    if device and len(device) > 0:
-                        result = run_command(f'powershell "Get-PhysicalDisk | Where-Object {{$_.DeviceNumber -eq (Get-Partition -DriveLetter {device[0]} | Get-Disk).Number}} | Select-Object MediaType, Model"')
-                        if result:
-                            if "SSD" in result or "Solid" in result:
-                                print(f"  {device}: ✅ SSD detected")
-                            elif "HDD" in result:
-                                print(f"  {device}: HDD detected")
-                            else:
-                                print(f"  {device}: {result[:50]}...")
-        except:
-            pass
+    if IS_LINUX:
+        print_subsection("Disk Information")
+        disk_info = run_command("lsblk -o NAME,SIZE,MODEL,TYPE 2>/dev/null")
+        if disk_info:
+            print("  lsblk output:")
+            for line in disk_info.split('\n'):
+                if line.strip():
+                    print(f"    {line}")
     
     REPORT_DATA["storage"] = storage_data
 
@@ -873,7 +1183,7 @@ def get_storage_info():
 # =============================================================================
 
 def get_network_info():
-    """Step 6: Get detailed network information"""
+    """Step 6: Get detailed network information with Wi-Fi details"""
     print_section("STEP 6: NETWORK INFORMATION")
     print("-" * 50)
     
@@ -890,7 +1200,8 @@ def get_network_info():
             "internet": False,
             "dns_resolution": False,
             "ping_success": False
-        }
+        },
+        "wifi": []
     }
     
     print_subsection("Network Interfaces")
@@ -915,6 +1226,88 @@ def get_network_info():
             else:
                 print(f"    MAC: {address.address}")
         network_data["interfaces"].append(interface_info)
+    
+    # Get Wi-Fi information based on OS
+    print_subsection("Wi-Fi Information")
+    
+    if IS_WINDOWS:
+        # Get Wi-Fi details using netsh
+        try:
+            wifi_output = run_command("netsh wlan show interfaces")
+            if wifi_output:
+                wifi_info = {}
+                for line in wifi_output.split('\n'):
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        wifi_info[key.strip()] = value.strip()
+                if wifi_info:
+                    network_data["wifi"].append(wifi_info)
+                    print(f"  Wi-Fi Adapter: {wifi_info.get('Name', 'Unknown')}")
+                    print(f"  SSID: {wifi_info.get('SSID', 'Not connected')}")
+                    print(f"  Band: {wifi_info.get('Band', 'Unknown')}")
+                    print(f"  Channel: {wifi_info.get('Channel', 'Unknown')}")
+                    print(f"  Signal: {wifi_info.get('Signal', 'Unknown')}")
+                    print(f"  Receive Rate: {wifi_info.get('Receive rate (Mbps)', 'Unknown')}")
+                    print(f"  Transmit Rate: {wifi_info.get('Transmit rate (Mbps)', 'Unknown')}")
+        except:
+            pass
+        
+        # Get network adapters
+        try:
+            adapter_output = run_command("powershell -Command \"Get-NetAdapter | Select-Object Name, InterfaceDescription, Status, NetworkInterfaceType\"")
+            if adapter_output:
+                print("\n  Network Adapters:")
+                for line in adapter_output.split('\n'):
+                    if line.strip() and not line.startswith('Name'):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            status = "Up" if "Up" in line else "Disconnected"
+                            print(f"    {parts[0]} - {status}")
+        except:
+            pass
+    
+    elif IS_LINUX:
+        # Get Wi-Fi info using iwconfig
+        try:
+            wifi_output = run_command("iwconfig 2>/dev/null | grep -E 'ESSID|Frequency|Bit Rate|Signal level'")
+            if wifi_output:
+                wifi_info = {}
+                for line in wifi_output.split('\n'):
+                    if 'ESSID' in line:
+                        wifi_info['SSID'] = line.split('"')[1] if '"' in line else line.split(':')[1].strip()
+                    elif 'Frequency' in line:
+                        wifi_info['Frequency'] = line.split(':')[1].strip() if ':' in line else None
+                    elif 'Bit Rate' in line:
+                        wifi_info['Bit Rate'] = line.split(':')[1].strip() if ':' in line else None
+                    elif 'Signal level' in line:
+                        wifi_info['Signal'] = line.split('=')[1].strip() if '=' in line else None
+                if wifi_info:
+                    network_data["wifi"].append(wifi_info)
+                    print(f"  SSID: {wifi_info.get('SSID', 'Not connected')}")
+                    print(f"  Frequency: {wifi_info.get('Frequency', 'Unknown')}")
+                    print(f"  Bit Rate: {wifi_info.get('Bit Rate', 'Unknown')}")
+                    print(f"  Signal: {wifi_info.get('Signal', 'Unknown')}")
+        except:
+            pass
+    
+    elif IS_MACOS:
+        # Get Wi-Fi info using airport
+        try:
+            wifi_output = run_command("/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null")
+            if wifi_output:
+                wifi_info = {}
+                for line in wifi_output.split('\n'):
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        wifi_info[key.strip()] = value.strip()
+                if wifi_info:
+                    network_data["wifi"].append(wifi_info)
+                    print(f"  SSID: {wifi_info.get('SSID', 'Not connected')}")
+                    print(f"  Band: {wifi_info.get('op mode', 'Unknown')}")
+                    print(f"  Channel: {wifi_info.get('channel', 'Unknown')}")
+                    print(f"  Signal: {wifi_info.get('agrCtlRSSI', 'Unknown')}")
+        except:
+            pass
     
     print_subsection("Network I/O Statistics")
     io_counters = psutil.net_io_counters()
@@ -948,7 +1341,7 @@ def get_network_info():
         network_data["connectivity"]["dns_resolution"] = True
         print(f"  ✅ DNS Resolution: google.com -> {dns_test}")
         
-        if platform.system() == "Windows":
+        if IS_WINDOWS:
             ping = run_command("ping -n 1 8.8.8.8")
             if ping:
                 network_data["connectivity"]["ping_success"] = True
@@ -1091,7 +1484,7 @@ def get_gpu_info():
     
     notes = """
     GPU detection: GPU name, compute capability, VRAM, CUDA cores, max threads.
-    RTX 5080 with 16GB VRAM and Compute Capability 12.0 (Blackwell architecture) is top-tier for AI.
+    Your GPU's capabilities determine what AI models you can run.
     """
     print_notes(9, notes)
     
@@ -1183,7 +1576,6 @@ def gpu_performance_test():
     - Matrix multiplication is the core operation in neural networks
     - Faster matrix multiplications = faster model training
     - Larger matrices = larger models = more complex AI tasks
-    - Your RTX 5080 can handle matrix sizes up to 24576x24576 efficiently
     """
     print_notes(11, notes)
     
@@ -1246,8 +1638,8 @@ def gpu_performance_test():
         REPORT_DATA["performance"]["max_matrix_size"] = max_size
         REPORT_DATA["performance"]["max_matrix_time_ms"] = max_time
         
-        print(f"  ✅ Your RTX 5080 handled {max_size}x{max_size} matrix in {max_time:.2f}ms")
-        print(f"  ✅ This is an excellent result for a consumer GPU")
+        print(f"  ✅ Your GPU handled {max_size}x{max_size} matrix in {max_time:.2f}ms")
+        print(f"  ✅ This is an excellent result")
         
         print("\n  📊 CAPABILITIES BASED ON MATRIX SIZE:")
         print("  " + "-" * 60)
@@ -1289,10 +1681,9 @@ def gpu_performance_test():
             print("     • Small neural networks")
             print("     • Basic AI tasks")
         
-        print("\n  💡 RECOMMENDATIONS FOR YOUR RTX 5080:")
+        print("\n  💡 RECOMMENDATIONS FOR YOUR GPU:")
         print("  " + "-" * 60)
         recommendations = [
-            "Train models with up to 70B parameters (with quantization)",
             "Use mixed precision (FP16/BF16) for 2x faster training",
             "Use gradient accumulation for larger effective batch sizes",
             "Consider using xformers for optimized attention mechanisms"
@@ -1312,7 +1703,7 @@ def gpu_memory_test():
     
     notes = """
     GPU Memory test: tests how much VRAM you can allocate.
-    16GB VRAM can fit: Llama-7B (5-7GB with quantization), Stable Diffusion (4-6GB), most BERT models.
+    Your VRAM capacity determines what models and batch sizes you can run.
     """
     print_notes(12, notes)
     
@@ -1713,7 +2104,7 @@ def cpu_stress_test():
     
     if cpu_percent < 80 and threads_used > 1:
         stress_data["issues"].append(f"Low CPU utilization: {cpu_percent}% with {threads_used} threads")
-        stress_data["recommendations"].append("Check Windows Power Plan (set to High Performance)")
+        stress_data["recommendations"].append("Check system Power Plan (set to High Performance)")
         stress_data["status"] = "WARNING"
     
     if physical_cores and physical_cores < 8:
@@ -1745,7 +2136,7 @@ def gpu_stress_test():
     
     notes = """
     GPU Stress Test: 5 iterations of 8192x8192 matrix multiplication.
-    0% Utilization is normal - RTX 5080 completes operations before nvidia-smi samples.
+    0% Utilization is normal - modern GPUs complete operations before monitoring tools sample.
     For better utilization, use larger matrices or increase batch size in training.
     """
     print_notes(16, notes)
@@ -1886,7 +2277,7 @@ def gpu_stress_test():
         "Use larger batch sizes for better utilization",
         "Enable mixed precision training (AMP)",
         "Use torch.compile() for PyTorch 2.0+",
-        "Set Windows Power Plan to 'High Performance'"
+        "Set system Power Plan to 'High Performance'"
     ]
     stress_data["recommendations"].extend(tips)
     for tip in tips:
@@ -2070,8 +2461,8 @@ def power_supply_test():
     
     notes = """
     Power Supply Test: checks GPU power draw vs expected.
-    RTX 5080 needs 360W under full load. Insufficient power causes throttling.
-    Current idle power (~45W) is normal. Under load should reach 300-360W.
+    High-end GPUs need 300W+ under full load. Insufficient power causes throttling.
+    Current idle power (~45W) is normal. Under load should reach 300W+.
     """
     print_notes(19, notes)
     
@@ -2122,10 +2513,15 @@ def power_supply_test():
     
     is_laptop = False
     try:
-        if platform.system() == "Windows":
+        if IS_WINDOWS:
             result = run_command("wmic computersystem get model")
             if result and any(x in result.lower() for x in ['laptop', 'notebook', 'tablet']):
                 is_laptop = True
+        elif IS_LINUX:
+            if os.path.exists('/sys/class/dmi/id/chassis_type'):
+                with open('/sys/class/dmi/id/chassis_type', 'r') as f:
+                    chassis = f.read().strip()
+                    is_laptop = chassis in ['8', '9', '10', '11', '31', '32']
     except:
         pass
     
@@ -2142,31 +2538,13 @@ def power_supply_test():
     print("\n  💡 RECOMMENDED POWER SUPPLY SPECIFICATIONS:")
     print("  " + "-" * 50)
     recommendations = [
-        "RTX 5080 Recommended PSU: 750W - 850W",
-        "Minimum PSU: 650W",
-        "PCIe Power Cables: 3x 8-pin or 1x 12VHPWR"
+        "Recommended PSU: 750W - 850W for high-end GPUs",
+        "Minimum PSU: 650W for most AI workloads",
+        "Ensure proper PCIe power cables are connected"
     ]
     for rec in recommendations:
         print(f"  • {rec}")
         power_data["recommendations"].append(rec)
-    
-    print("\n  🛒 COMMERCIAL RECOMMENDATIONS:")
-    print("  " + "-" * 50)
-    commercial = [
-        "Corsair RM850x (850W, Gold) - $150",
-        "Seasonic Focus GX-850 (850W, Gold) - $160",
-        "ASUS ROG Thor 850P (850W, Platinum) - $250",
-        "EVGA SuperNOVA 850 G6 (850W, Gold) - $140",
-        "Be Quiet! Dark Power 12 850W (850W, Titanium) - $200"
-    ]
-    for rec in commercial:
-        print(f"  • {rec}")
-        power_data["recommendations"].append(rec)
-    
-    print("\n  POWER CABLES NEEDED:")
-    print("  • RTX 5080 uses 12VHPWR connector (16-pin)")
-    print("  • Most modern PSUs include this natively")
-    print("  • Adapter: 3x 8-pin to 12VHPWR (included with GPU)")
     
     REPORT_DATA["power_supply"] = power_data
 
@@ -2210,7 +2588,7 @@ def system_summary():
     if HAS_TORCH and torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
         gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
-        gpu_score = "✅ Excellent" if "RTX 50" in gpu_name or "RTX 40" in gpu_name else "✅ Good"
+        gpu_score = "✅ Excellent" if "RTX 50" in gpu_name or "RTX 40" in gpu_name or "RTX A" in gpu_name else "✅ Good"
         summary_data["gpu"] = {"name": gpu_name, "vram_gb": gpu_mem, "score": gpu_score}
         print(f"  GPU: {gpu_name} ({gpu_mem:.1f} GB) - {gpu_score}")
     elif HAS_TORCH:
@@ -2224,9 +2602,14 @@ def system_summary():
         partitions = psutil.disk_partitions()
         has_ssd = False
         for partition in partitions:
-            if platform.system() == "Windows":
+            if IS_WINDOWS:
                 result = run_command(f'powershell "Get-PhysicalDisk | Where-Object {{$_.DeviceNumber -eq (Get-Partition -DriveLetter {partition.device[0]} | Get-Disk).Number}} | Select-Object MediaType"')
                 if result and "SSD" in result:
+                    has_ssd = True
+                    break
+            elif IS_LINUX:
+                # Check if any partition is on SSD (simplified check)
+                if partition.device and 'nvme' in partition.device.lower():
                     has_ssd = True
                     break
         
@@ -2252,9 +2635,10 @@ def system_summary():
     if HAS_TORCH and torch.cuda.is_available():
         summary_data["overall_ready"] = True
         print("  ✅ Your system is READY for AI/ML development!")
-        print(f"  ✅ RTX 5080 with 16GB VRAM is excellent for most AI models")
-        print("  ✅ 32GB+ RAM can handle large datasets")
-        print("  ✅ Modern CPU with 16+ cores for data preprocessing")
+        if "RTX 50" in gpu_name or "RTX 40" in gpu_name:
+            print(f"  ✅ {gpu_name} with {gpu_mem:.1f}GB VRAM is excellent for most AI models")
+        print("  ✅ Sufficient RAM for data processing")
+        print("  ✅ Modern CPU with multiple cores for data preprocessing")
         
         REPORT_DATA["recommendations"].append("Your system is ready for AI/ML development")
         REPORT_DATA["recommendations"].append("Use mixed precision training (AMP) for best performance")
@@ -2286,7 +2670,7 @@ def show_environment_comparison():
     print("  5. None     | Skip installation           | No virtual environment setup")
     print("  " + "="*70)
     
-    print("\n  📝 Recommendation for your RTX 5080 system:")
+    print("\n  📝 Recommendation for your system:")
     print("  🏆  conda or micromamba - Best for CUDA/GPU dependencies")
     print("  ✅  uv - Great for pure Python, but CUDA support is limited")
     print("  ⚠️  venv - Lightweight but doesn't handle CUDA well")
@@ -2312,7 +2696,7 @@ def create_environment_with_tool(tool, env_name, installed_list):
             subprocess.run([sys.executable, '-m', 'venv', env_name], check=True, capture_output=True)
             print(f"  ✅ Virtual environment '{env_name}' created successfully with venv!")
             
-            if platform.system() == "Windows":
+            if IS_WINDOWS:
                 activate_cmd = f"{env_name}\\Scripts\\activate"
                 pip_cmd = f"{env_name}\\Scripts\\pip"
                 python_cmd = f"{env_name}\\Scripts\\python"
@@ -2381,7 +2765,7 @@ def create_environment_with_tool(tool, env_name, installed_list):
             subprocess.run(['uv', 'venv', env_name], check=True, capture_output=True)
             print(f"  ✅ uv environment '{env_name}' created successfully!")
             
-            if platform.system() == "Windows":
+            if IS_WINDOWS:
                 activate_cmd = f"{env_name}\\Scripts\\activate"
                 pip_cmd = f"uv pip install"
                 python_cmd = f"{env_name}\\Scripts\\python"
@@ -2554,7 +2938,12 @@ def main():
     print("="*70)
     print("🔍 COMPREHENSIVE SYSTEM SCAN - AI WORKLOAD READINESS")
     print("="*70)
-    print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Started: {SCAN_START_STR}")
+    print(f"OS Detected: {OS_TYPE}")
+    print(f"Platform: {'Windows' if IS_WINDOWS else 'Linux' if IS_LINUX else 'macOS' if IS_MACOS else 'Unknown'}")
+    if IS_JETSON:
+        print("🔹 NVIDIA Jetson Nano Detected")
+    print("="*70)
     
     print_table_header()
     

@@ -1,0 +1,636 @@
+{
+  "scan_start_time": "2026-06-21T17:07:12.468733",
+  "scan_end_time": "2026-06-21T17:08:06.842915",
+  "scan_duration_seconds": 54.374182,
+  "os_info": {
+    "type": "Windows",
+    "is_windows": true,
+    "is_linux": false,
+    "is_macos": false,
+    "is_jetson": false
+  },
+  "system": {
+    "os": "Windows",
+    "release": "11",
+    "version": "10.0.26200",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "hostname": "alex",
+    "boot_time": "2026-06-21 08:49:45",
+    "python_version": "3.14.6 (tags/v3.14.6:c63aec6, Jun 10 2026, 10:26:10) [MSC v.1944 64 bit (AMD64)]",
+    "script_run": "2026-06-21 17:07:14",
+    "is_windows": true,
+    "is_linux": false,
+    "is_macos": false,
+    "is_jetson": false
+  },
+  "cpu": {
+    "physical_cores": 12,
+    "logical_cores": 24,
+    "max_frequency": 4400.0,
+    "current_frequency": 4400.0,
+    "min_frequency": 0.0,
+    "cpu_usage": 2.1,
+    "model": "AMD Ryzen 9 9900X 12-Core Processor",
+    "architecture": "X86_64",
+    "virtualization": true,
+    "running_in_vm": false,
+    "load_average": {
+      "1min": 0.0,
+      "5min": 0.0,
+      "15min": 0.0
+    },
+    "bits": 64,
+    "cache_size": 65536,
+    "flags": 88,
+    "processor_id": "178BFBFF00B40F40",
+    "max_clock_speed": 4400,
+    "current_clock_speed": 4400,
+    "socket": "AM5"
+  },
+  "bios": {
+    "manufacturer": "American Megatrends International, LLC.",
+    "name": "1.H9",
+    "version": "1.H9",
+    "date": "20250814000000.000000+000",
+    "smbios_major": 3,
+    "smbios_minor": 7
+  },
+  "motherboard": {},
+  "memory": {
+    "total_ram": 33395494912,
+    "available_ram": 14845014016,
+    "used_ram": 18550480896,
+    "ram_usage_percent": 55.5,
+    "swap_total": 19327352832,
+    "swap_used": 209567744,
+    "swap_free": 19117785088,
+    "swap_usage_percent": 1.1,
+    "modules": [
+      {
+        "capacity": "17179869184",
+        "speed": 4800,
+        "manufacturer": "Unknown",
+        "part_number": "FLBD516G6000HC38GBKT          ",
+        "form_factor": 8,
+        "device_locator": "DIMMA1"
+      }
+    ]
+  },
+  "storage": {
+    "partitions": [
+      {
+        "device": "C:\\",
+        "mountpoint": "C:\\",
+        "fstype": "NTFS",
+        "opts": "rw,fixed",
+        "total_size": 1969662980096,
+        "used": 1490336219136,
+        "free": 479326760960,
+        "usage_percent": 75.7
+      }
+    ],
+    "io_stats": {
+      "read_count": 1480417,
+      "write_count": 1515739,
+      "read_bytes": 47638907392,
+      "write_bytes": 72274693632,
+      "read_time_ms": 1077,
+      "write_time_ms": 166
+    },
+    "physical_disks": [
+      {
+        "model": "WD Green SN3000 2TB",
+        "interface": "SCSI",
+        "media_type": "Fixed hard disk media",
+        "size": "2000396321280",
+        "partitions": 4
+      }
+    ],
+    "speed_test": {
+      "test_size_mb": 100,
+      "write_speed_mb_s": 1012.6252713054773,
+      "read_speed_mb_s": 2982.9767865270824,
+      "drive_type": "NVMe SSD",
+      "status": "PASS",
+      "issues": [],
+      "recommendations": []
+    }
+  },
+  "network": {
+    "interfaces": [
+      {
+        "name": "Ethernet",
+        "addresses": [
+          {
+            "family": "-1",
+            "address": "D8-43-AE-F8-64-39"
+          },
+          {
+            "family": "2",
+            "address": "169.254.69.45",
+            "netmask": "255.255.0.0"
+          },
+          {
+            "family": "23",
+            "address": "fe80::6489:d55e:91a0:f7fa"
+          }
+        ]
+      },
+      {
+        "name": "Wi-Fi 2",
+        "addresses": [
+          {
+            "family": "-1",
+            "address": "1E-56-7B-1F-84-FD"
+          },
+          {
+            "family": "2",
+            "address": "169.254.51.100",
+            "netmask": "255.255.0.0"
+          },
+          {
+            "family": "23",
+            "address": "fe80::82a:a139:3115:3c64"
+          }
+        ]
+      },
+      {
+        "name": "Wi-Fi 3",
+        "addresses": [
+          {
+            "family": "-1",
+            "address": "FE-56-7B-1F-84-FD"
+          },
+          {
+            "family": "2",
+            "address": "169.254.78.91",
+            "netmask": "255.255.0.0"
+          },
+          {
+            "family": "23",
+            "address": "fe80::883:c59d:9031:b2b2"
+          }
+        ]
+      },
+      {
+        "name": "Wi-Fi 5",
+        "addresses": [
+          {
+            "family": "-1",
+            "address": "0E-56-7B-1F-84-FD"
+          },
+          {
+            "family": "2",
+            "address": "169.254.237.192",
+            "netmask": "255.255.0.0"
+          },
+          {
+            "family": "23",
+            "address": "fe80::e381:7878:3fc:381a"
+          }
+        ]
+      },
+      {
+        "name": "Wi-Fi",
+        "addresses": [
+          {
+            "family": "-1",
+            "address": "DC-56-7B-1F-84-FD"
+          },
+          {
+            "family": "2",
+            "address": "10.0.0.237",
+            "netmask": "255.255.255.0"
+          },
+          {
+            "family": "23",
+            "address": "2601:704:980:5500::44e8"
+          },
+          {
+            "family": "23",
+            "address": "2601:704:980:5500:75fd:b753:87c3:f41d"
+          },
+          {
+            "family": "23",
+            "address": "2601:704:980:5500:fc24:1aee:3745:ffce"
+          },
+          {
+            "family": "23",
+            "address": "fe80::c7cb:d9d3:2282:cb81"
+          }
+        ]
+      }
+    ],
+    "io_stats": {
+      "bytes_sent": 1023956454,
+      "bytes_recv": 24238636055,
+      "packets_sent": 1892887,
+      "packets_recv": 17488150,
+      "errin": 0,
+      "errout": 0,
+      "dropin": 0,
+      "dropout": 0
+    },
+    "connectivity": {
+      "internet": true,
+      "dns_resolution": true,
+      "ping_success": true
+    },
+    "wifi": [
+      {
+        "There are 2 interfaces on the system": "",
+        "Name": "Wi-Fi 3",
+        "Description": "Qualcomm FastConnect 7800 Wi-Fi 7 High Band Simultaneous (HBS) Network Adapter #3",
+        "GUID": "4cc5eb0f-c926-4910-a135-57a0707d49ef",
+        "Physical address": "fe:56:7b:1f:84:fd",
+        "Interface type": "Secondary",
+        "State": "disconnected",
+        "SSID": "alextrex",
+        "AP BSSID": "70:13:01:8a:d9:a3",
+        "Colocated APs": ": 3",
+        "BSSID": "72:13:01:83:d9:a6,  Band: 5 GHz,  Channel: 44",
+        "Band": "6 GHz",
+        "Channel": "197",
+        "Connected Akm-cipher": "[ akm = 00-0f-ac:08, cipher =  00-0f-ac:04 ]",
+        "Network type": "Infrastructure",
+        "Radio type": "802.11ax",
+        "Authentication": "WPA3-Personal  (H2E)",
+        "Cipher": "CCMP",
+        "Connection mode": "Auto Connect",
+        "Receive rate (Mbps)": "2401.9",
+        "Transmit rate (Mbps)": "2401.9",
+        "Signal": "100%",
+        "Rssi": "-44",
+        "Profile": "alextrex",
+        "QoS MSCS Configured": "0",
+        "QoS Map Configured": "0",
+        "QoS Map Allowed by Policy": "0",
+        "Primary interface": "Wi-Fi",
+        "Radio status": "Hardware On"
+      }
+    ],
+    "speed_test": {
+      "download_mbps": 680.9440857992062,
+      "upload_mbps": 36.27151801122896,
+      "ping_ms": 31.322,
+      "status": "PASS",
+      "issues": [],
+      "recommendations": []
+    }
+  },
+  "pytorch": {
+    "installed": true,
+    "version": "2.12.0.dev20260408+cu128",
+    "latest_version": "2.12.1",
+    "cuda_version": "12.8",
+    "cudnn_version": 92000,
+    "cuda_available": true,
+    "is_latest": false
+  },
+  "gpu": {
+    "cuda_available": true,
+    "cuda_version": "12.8",
+    "cudnn_version": 92000,
+    "gpu_count": 1,
+    "gpu_details": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 5080",
+        "compute_capability": "12.0",
+        "total_vram": 17.094475776,
+        "multi_processors": 84,
+        "cuda_cores": 10752,
+        "max_threads_per_block": 1024,
+        "max_threads_per_multi_processor": 1536,
+        "shared_memory_per_block": 48.0,
+        "total_shared_memory_per_multiprocessor": 100.0
+      }
+    ],
+    "computation_success": true,
+    "nvidia_info": {
+      "driver_version": null,
+      "cuda_version": null,
+      "gpu_name": "NVIDIA GeForce RTX 5080",
+      "temperature": null,
+      "power_draw": null,
+      "power_limit": null,
+      "gpu_utilization": null,
+      "memory_utilization": null,
+      "performance_state": null,
+      "sm_clock": null,
+      "memory_clock": null,
+      "query_success": false,
+      "total_vram_gb": 17.094475776,
+      "compute_capability": "12.0",
+      "multi_processors": 84
+    }
+  },
+  "performance": {
+    "matrix_benchmark": [
+      {
+        "size": 1024,
+        "status": "success",
+        "time_ms": 0.08949999973992817
+      },
+      {
+        "size": 2048,
+        "status": "success",
+        "time_ms": 0.49061999998230016
+      },
+      {
+        "size": 4096,
+        "status": "success",
+        "time_ms": 3.7309899998945184
+      },
+      {
+        "size": 8192,
+        "status": "success",
+        "time_ms": 27.73990000023332
+      },
+      {
+        "size": 12288,
+        "status": "success",
+        "time_ms": 97.63426999998046
+      },
+      {
+        "size": 16384,
+        "status": "success",
+        "time_ms": 220.95254999985627
+      },
+      {
+        "size": 24576,
+        "status": "success",
+        "time_ms": 789.9006999999983
+      }
+    ],
+    "max_matrix_size": 24576,
+    "max_matrix_time_ms": 789.9006999999983,
+    "memory_test": {
+      "total_vram_gb": 17.094475776,
+      "allocations": [
+        {
+          "size_gb": 0.1,
+          "allocated_gb": 0.134217728,
+          "success": true
+        },
+        {
+          "size_gb": 0.25,
+          "allocated_gb": 0.283554816,
+          "success": true
+        },
+        {
+          "size_gb": 0.5,
+          "allocated_gb": 0.533554688,
+          "success": true
+        },
+        {
+          "size_gb": 0.75,
+          "allocated_gb": 0.784334848,
+          "success": true
+        },
+        {
+          "size_gb": 1.0,
+          "allocated_gb": 1.033895936,
+          "success": true
+        },
+        {
+          "size_gb": 1.5,
+          "allocated_gb": 1.533554688,
+          "success": true
+        },
+        {
+          "size_gb": 2.0,
+          "allocated_gb": 2.03423744,
+          "success": true
+        },
+        {
+          "size_gb": 3.0,
+          "allocated_gb": 3.034578944,
+          "success": true
+        },
+        {
+          "size_gb": 4.0,
+          "allocated_gb": 4.033554432,
+          "success": true
+        },
+        {
+          "size_gb": 6.0,
+          "allocated_gb": 6.033554432,
+          "success": true
+        },
+        {
+          "size_gb": 8.0,
+          "allocated_gb": 8.034189312,
+          "success": true
+        },
+        {
+          "size_gb": 12.0,
+          "allocated_gb": 12.033554432,
+          "success": true
+        },
+        {
+          "size_gb": 14.0,
+          "allocated_gb": 14.034141184,
+          "success": true
+        }
+      ],
+      "max_allocated_gb": 14.0
+    }
+  },
+  "software": {
+    "virtual_environment": {
+      "active": false,
+      "type": "None",
+      "path": "C:\\Users\\alexa\\AppData\\Local\\Programs\\Python\\Python314\\python.exe"
+    },
+    "frameworks": {
+      "PyTorch": {
+        "installed": true,
+        "version": "2.12.0.dev20260408+cu128"
+      },
+      "TensorFlow": {
+        "installed": false,
+        "version": null
+      },
+      "JAX": {
+        "installed": false,
+        "version": null
+      },
+      "Hugging Face Transformers": {
+        "installed": false,
+        "version": null
+      },
+      "Xformers": {
+        "installed": false,
+        "version": null
+      },
+      "LangChain": {
+        "installed": false,
+        "version": null
+      },
+      "Hugging Face Accelerate": {
+        "installed": false,
+        "version": null
+      },
+      "Diffusers": {
+        "installed": false,
+        "version": null
+      },
+      "SciPy": {
+        "installed": false,
+        "version": null
+      },
+      "NumPy": {
+        "installed": true,
+        "version": "2.4.6"
+      },
+      "Pandas": {
+        "installed": false,
+        "version": null
+      },
+      "Matplotlib": {
+        "installed": false,
+        "version": null
+      },
+      "Seaborn": {
+        "installed": false,
+        "version": null
+      },
+      "Scikit-Learn": {
+        "installed": false,
+        "version": null
+      },
+      "OpenCV": {
+        "installed": false,
+        "version": null
+      }
+    },
+    "installed_count": 2,
+    "total_count": 15
+  },
+  "stress_tests": {
+    "cpu": {
+      "physical_cores": 12,
+      "logical_cores": 24,
+      "base_frequency": 4400.0,
+      "duration_seconds": 0.6909797191619873,
+      "threads_used": 1,
+      "cpu_usage_after": 1.8,
+      "frequency_drop_percent": 0.0,
+      "issues": [],
+      "recommendations": [],
+      "status": "PASS"
+    },
+    "gpu": {
+      "iterations": 5,
+      "matrix_size": 8192,
+      "results": [
+        {
+          "iteration": 1,
+          "temperature": 51.0,
+          "power": 55.67,
+          "utilization": "38 %",
+          "memory_used": "2913 MiB"
+        },
+        {
+          "iteration": 2,
+          "temperature": 48.0,
+          "power": 36.83,
+          "utilization": "0 %",
+          "memory_used": "3169 MiB"
+        },
+        {
+          "iteration": 3,
+          "temperature": 48.0,
+          "power": 47.59,
+          "utilization": "0 %",
+          "memory_used": "3169 MiB"
+        },
+        {
+          "iteration": 4,
+          "temperature": 48.0,
+          "power": 45.43,
+          "utilization": "0 %",
+          "memory_used": "3169 MiB"
+        },
+        {
+          "iteration": 5,
+          "temperature": 48.0,
+          "power": 47.43,
+          "utilization": "0 %",
+          "memory_used": "3233 MiB"
+        }
+      ],
+      "max_temperature": 51.0,
+      "max_power": 55.67,
+      "avg_temperature": 48.6,
+      "duration_seconds": 2.94350266456604,
+      "issues": [
+        "Low power draw: 55.7W (expected 300W)"
+      ],
+      "recommendations": [
+        "Try increasing matrix size or batch size",
+        "Check if GPU is in power-saving mode",
+        "Use larger batch sizes for better utilization",
+        "Enable mixed precision training (AMP)",
+        "Use torch.compile() for PyTorch 2.0+",
+        "Set system Power Plan to 'High Performance'"
+      ],
+      "status": "WARNING"
+    }
+  },
+  "power_supply": {
+    "current_power_w": "16.92 W",
+    "power_limit_w": "360.00 W",
+    "gpu_utilization": "0 %",
+    "temperature": "43",
+    "memory_total_gb": "16303 MiB",
+    "memory_used_gb": "3233 MiB",
+    "is_laptop": false,
+    "recommendations": [
+      "Recommended PSU: 750W - 850W for high-end GPUs",
+      "Minimum PSU: 650W for most AI workloads",
+      "Ensure proper PCIe power cables are connected"
+    ],
+    "status": "PASS"
+  },
+  "summary": {
+    "cpu": {
+      "cores": 24,
+      "score": "\u2705 Excellent"
+    },
+    "ram": {
+      "gb": 33.395494912,
+      "score": "\u2705 Excellent"
+    },
+    "gpu": {
+      "name": "NVIDIA GeForce RTX 5080",
+      "vram_gb": 17.094475776,
+      "score": "\u2705 Excellent"
+    },
+    "storage": {
+      "has_ssd": false,
+      "score": "\u26a0\ufe0f  HDD detected (consider SSD upgrade)"
+    },
+    "network": {
+      "internet": true,
+      "score": "\u2705 Available"
+    },
+    "overall_ready": true
+  },
+  "virtual_environment_setup": {
+    "created": false,
+    "tool_used": null,
+    "env_name": null,
+    "packages_installed": false
+  },
+  "recommendations": [
+    "Use mixed precision (FP16/BF16) for 2x faster training",
+    "Use gradient accumulation for larger effective batch sizes",
+    "Consider using xformers for optimized attention mechanisms",
+    "Your system is ready for AI/ML development",
+    "Use mixed precision training (AMP) for best performance",
+    "Consider using PyTorch 2.0+ for torch.compile() optimization"
+  ]
+}
