@@ -44,6 +44,38 @@ import datetime
 import re
 
 # =============================================================================
+# GLOBAL VARIABLES
+# =============================================================================
+
+# Get the directory where this script is located
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Global dictionary to store all report data
+REPORT_DATA = {
+    "scan_timestamp": "",
+    "system": {},
+    "cpu": {},
+    "bios": {},
+    "memory": {},
+    "storage": {},
+    "network": {},
+    "pytorch": {},
+    "gpu": {},
+    "performance": {},
+    "software": {},
+    "stress_tests": {},
+    "power_supply": {},
+    "summary": {},
+    "virtual_environment_setup": {
+        "created": False,
+        "tool_used": None,
+        "env_name": None,
+        "packages_installed": False
+    },
+    "recommendations": []
+}
+
+# =============================================================================
 # LIBRARY CHECK AND INSTALLATION
 # =============================================================================
 
@@ -441,6 +473,24 @@ def print_notes(step_num, notes):
         print(f"    {line}")
     print("  " + "-" * 60)
 
+def save_json_report():
+    """Save the collected report data to a JSON file in the script directory"""
+    try:
+        # Add timestamp
+        REPORT_DATA["scan_timestamp"] = datetime.datetime.now().isoformat()
+        
+        # Save to file in the script directory
+        filename = os.path.join(SCRIPT_DIR, "system_scan_report.json")
+        with open(filename, 'w') as f:
+            json.dump(REPORT_DATA, f, indent=2, default=str)
+        
+        print(f"\n📄 JSON report saved to: {filename}")
+        print(f"   File size: {get_size(os.path.getsize(filename))}")
+        return filename
+    except Exception as e:
+        print(f"\n⚠️  Failed to save JSON report: {e}")
+        return None
+
 # =============================================================================
 # STEP 1: SYSTEM OVERVIEW
 # =============================================================================
@@ -455,6 +505,19 @@ def get_system_info():
     This helps identify your environment and ensure compatibility with AI tools.
     """
     print_notes(1, notes)
+    
+    system_info = {
+        "os": platform.system(),
+        "release": platform.release(),
+        "version": platform.version(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "hostname": socket.gethostname(),
+        "boot_time": datetime.datetime.fromtimestamp(psutil.boot_time()).strftime('%Y-%m-%d %H:%M:%S'),
+        "python_version": sys.version,
+        "script_run": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    REPORT_DATA["system"] = system_info
     
     print(f"  System: {platform.system()} {platform.release()} ({platform.version})")
     print(f"  Machine: {platform.machine()}")
@@ -482,24 +545,46 @@ def get_cpu_info():
     physical_cores = psutil.cpu_count(logical=False)
     logical_cores = psutil.cpu_count(logical=True)
     
-    print(f"  Physical Cores: {physical_cores}")
-    print(f"  Logical Cores: {logical_cores}")
+    cpu_data = {
+        "physical_cores": physical_cores,
+        "logical_cores": logical_cores,
+        "max_frequency": None,
+        "current_frequency": None,
+        "min_frequency": None,
+        "cpu_usage": psutil.cpu_percent(interval=1),
+        "model": "Unknown",
+        "architecture": "Unknown",
+        "virtualization": "Unknown",
+        "running_in_vm": False,
+        "load_average": None
+    }
     
     freq = psutil.cpu_freq()
     if freq:
+        cpu_data["max_frequency"] = freq.max
+        cpu_data["current_frequency"] = freq.current
+        cpu_data["min_frequency"] = freq.min
         print(f"  Max Frequency: {freq.max:.2f} MHz")
         print(f"  Current Frequency: {freq.current:.2f} MHz")
         print(f"  Min Frequency: {freq.min:.2f} MHz")
     
+    print(f"  Physical Cores: {physical_cores}")
+    print(f"  Logical Cores: {logical_cores}")
     print(f"  CPU Usage: {psutil.cpu_percent(interval=1)}%")
     
     if hasattr(psutil, 'getloadavg'):
         load = psutil.getloadavg()
+        cpu_data["load_average"] = {"1min": load[0], "5min": load[1], "15min": load[2]}
         print(f"  Load Average (1, 5, 15 min): {load[0]:.2f}, {load[1]:.2f}, {load[2]:.2f}")
     
     if HAS_CPUINFO:
         try:
             info = cpuinfo.get_cpu_info()
+            cpu_data["model"] = info.get('brand_raw', 'Unknown')
+            cpu_data["architecture"] = info.get('arch', 'Unknown')
+            cpu_data["bits"] = info.get('bits', 'Unknown')
+            cpu_data["cache_size"] = info.get('l2_cache_size', 'Unknown')
+            cpu_data["flags"] = len(info.get('flags', []))
             print(f"  CPU Model: {info.get('brand_raw', 'Unknown')}")
             print(f"  Architecture: {info.get('arch', 'Unknown')}")
             print(f"  Bits: {info.get('bits', 'Unknown')}")
@@ -512,6 +597,11 @@ def get_cpu_info():
         try:
             c = wmi.WMI()
             for cpu in c.Win32_Processor():
+                cpu_data["processor_id"] = cpu.ProcessorId
+                cpu_data["max_clock_speed"] = cpu.MaxClockSpeed
+                cpu_data["current_clock_speed"] = cpu.CurrentClockSpeed
+                cpu_data["socket"] = cpu.SocketDesignation
+                cpu_data["virtualization"] = cpu.VirtualizationFirmwareEnabled
                 print(f"  Processor ID: {cpu.ProcessorId}")
                 print(f"  Max Clock Speed: {cpu.MaxClockSpeed} MHz")
                 print(f"  Current Clock Speed: {cpu.CurrentClockSpeed} MHz")
@@ -524,6 +614,7 @@ def get_cpu_info():
     if platform.system() == "Windows":
         virt = run_command("systeminfo | findstr /I 'virtualization'")
         if virt:
+            cpu_data["virtualization_cmd"] = virt
             print(f"  Virtualization: {virt}")
     
     is_vm = False
@@ -532,7 +623,10 @@ def get_cpu_info():
             is_vm = "Virtual" in run_command("wmic computersystem get model") or "VMware" in run_command("wmic computersystem get model")
     except:
         pass
+    cpu_data["running_in_vm"] = is_vm
     print(f"  Running in VM: {is_vm}")
+    
+    REPORT_DATA["cpu"] = cpu_data
 
 # =============================================================================
 # STEP 3: BIOS / FIRMWARE INFORMATION
@@ -549,11 +643,20 @@ def get_bios_info():
     """
     print_notes(3, notes)
     
+    bios_data = {}
+    
     if platform.system() == "Windows":
         if HAS_WMI:
             try:
                 c = wmi.WMI()
                 for bios in c.Win32_BIOS():
+                    bios_data["manufacturer"] = bios.Manufacturer
+                    bios_data["name"] = bios.Name
+                    bios_data["version"] = bios.SMBIOSBIOSVersion
+                    bios_data["date"] = bios.ReleaseDate
+                    bios_data["serial_number"] = bios.SerialNumber
+                    bios_data["smbios_major"] = bios.SMBIOSMajorVersion
+                    bios_data["smbios_minor"] = bios.SMBIOSMinorVersion
                     print(f"  Manufacturer: {bios.Manufacturer}")
                     print(f"  Name: {bios.Name}")
                     print(f"  Version: {bios.SMBIOSBIOSVersion}")
@@ -566,14 +669,18 @@ def get_bios_info():
         
         bios_info = run_command("systeminfo | findstr /I 'BIOS'")
         if bios_info:
+            bios_data["systeminfo"] = bios_info
             for line in bios_info.split('\n'):
                 print(f"  {line.strip()}")
     
     elif platform.system() == "Linux":
         bios_info = run_command("sudo dmidecode -t bios 2>/dev/null | grep -E 'Vendor|Version|Release Date'")
         if bios_info:
+            bios_data["dmidecode"] = bios_info
             for line in bios_info.split('\n'):
                 print(f"  {line.strip()}")
+    
+    REPORT_DATA["bios"] = bios_data
 
 # =============================================================================
 # STEP 4: MEMORY (RAM) INFORMATION
@@ -593,6 +700,18 @@ def get_memory_info():
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
     
+    memory_data = {
+        "total_ram": mem.total,
+        "available_ram": mem.available,
+        "used_ram": mem.used,
+        "ram_usage_percent": mem.percent,
+        "swap_total": swap.total,
+        "swap_used": swap.used,
+        "swap_free": swap.free,
+        "swap_usage_percent": swap.percent,
+        "modules": []
+    }
+    
     print(f"  Total RAM: {get_size(mem.total)}")
     print(f"  Available RAM: {get_size(mem.available)}")
     print(f"  Used RAM: {get_size(mem.used)}")
@@ -604,6 +723,15 @@ def get_memory_info():
             total_speed = 0
             count = 0
             for mem_device in c.Win32_PhysicalMemory():
+                module = {
+                    "capacity": mem_device.Capacity,
+                    "speed": mem_device.Speed,
+                    "manufacturer": mem_device.Manufacturer,
+                    "part_number": mem_device.PartNumber,
+                    "form_factor": mem_device.FormFactor,
+                    "device_locator": mem_device.DeviceLocator
+                }
+                memory_data["modules"].append(module)
                 print(f"\n  Memory Module:")
                 print(f"    Capacity: {get_size(mem_device.Capacity)}")
                 print(f"    Speed: {mem_device.Speed} MHz")
@@ -614,6 +742,7 @@ def get_memory_info():
                 total_speed += int(mem_device.Speed) if mem_device.Speed else 0
                 count += 1
             if count > 0:
+                memory_data["avg_speed"] = total_speed/count
                 print(f"\n  Average Speed: {total_speed/count:.0f} MHz")
         except:
             pass
@@ -622,6 +751,8 @@ def get_memory_info():
     print(f"  Swap Used: {get_size(swap.used)}")
     print(f"  Swap Free: {get_size(swap.free)}")
     print(f"  Swap Usage: {swap.percent}%")
+    
+    REPORT_DATA["memory"] = memory_data
 
 # =============================================================================
 # STEP 5: STORAGE INFORMATION
@@ -638,10 +769,22 @@ def get_storage_info():
     """
     print_notes(5, notes)
     
+    storage_data = {
+        "partitions": [],
+        "io_stats": {},
+        "physical_disks": []
+    }
+    
     print_subsection("Disk Partitions")
     partitions = psutil.disk_partitions()
     for partition in partitions:
-        # Fix the warning by using raw string or escaping properly
+        partition_info = {
+            "device": partition.device,
+            "mountpoint": partition.mountpoint,
+            "fstype": partition.fstype,
+            "opts": partition.opts
+        }
+        
         device_display = partition.device.replace('\\', '\\\\')
         print(f"  Device: {device_display}")
         print(f"    Mount: {partition.mountpoint}")
@@ -650,17 +793,30 @@ def get_storage_info():
         
         try:
             usage = psutil.disk_usage(partition.mountpoint)
+            partition_info["total_size"] = usage.total
+            partition_info["used"] = usage.used
+            partition_info["free"] = usage.free
+            partition_info["usage_percent"] = usage.percent
             print(f"    Total Size: {get_size(usage.total)}")
             print(f"    Used: {get_size(usage.used)}")
             print(f"    Free: {get_size(usage.free)}")
             print(f"    Usage: {usage.percent}%")
         except PermissionError:
             print("    (Permission denied)")
+        storage_data["partitions"].append(partition_info)
         print()
     
     print_subsection("Disk I/O Statistics")
     io_counters = psutil.disk_io_counters()
     if io_counters:
+        storage_data["io_stats"] = {
+            "read_count": io_counters.read_count,
+            "write_count": io_counters.write_count,
+            "read_bytes": io_counters.read_bytes,
+            "write_bytes": io_counters.write_bytes,
+            "read_time_ms": io_counters.read_time,
+            "write_time_ms": io_counters.write_time
+        }
         print(f"  Read Count: {io_counters.read_count}")
         print(f"  Write Count: {io_counters.write_count}")
         print(f"  Read Bytes: {get_size(io_counters.read_bytes)}")
@@ -673,6 +829,15 @@ def get_storage_info():
         try:
             c = wmi.WMI()
             for disk in c.Win32_DiskDrive():
+                disk_info = {
+                    "model": disk.Model,
+                    "interface": disk.InterfaceType,
+                    "media_type": disk.MediaType,
+                    "size": disk.Size,
+                    "serial_number": disk.SerialNumber,
+                    "partitions": disk.Partitions
+                }
+                storage_data["physical_disks"].append(disk_info)
                 print(f"  Model: {disk.Model}")
                 print(f"    Interface: {disk.InterfaceType}")
                 print(f"    Media Type: {disk.MediaType}")
@@ -700,6 +865,8 @@ def get_storage_info():
                                 print(f"  {device}: {result[:50]}...")
         except:
             pass
+    
+    REPORT_DATA["storage"] = storage_data
 
 # =============================================================================
 # STEP 6: NETWORK INFORMATION
@@ -716,24 +883,52 @@ def get_network_info():
     """
     print_notes(6, notes)
     
+    network_data = {
+        "interfaces": [],
+        "io_stats": {},
+        "connectivity": {
+            "internet": False,
+            "dns_resolution": False,
+            "ping_success": False
+        }
+    }
+    
     print_subsection("Network Interfaces")
     interfaces = psutil.net_if_addrs()
     for interface_name, interface_addresses in interfaces.items():
         if interface_name.startswith(('lo', 'Loopback')):
             continue
+        interface_info = {"name": interface_name, "addresses": []}
         print(f"  {interface_name}:")
         for address in interface_addresses:
+            addr_info = {"family": str(address.family), "address": address.address}
+            if address.netmask:
+                addr_info["netmask"] = address.netmask
+            interface_info["addresses"].append(addr_info)
+            
             if address.family == socket.AF_INET:
                 print(f"    IPv4: {address.address}")
-                print(f"    Netmask: {address.netmask}")
+                if address.netmask:
+                    print(f"    Netmask: {address.netmask}")
             elif address.family == socket.AF_INET6:
                 print(f"    IPv6: {address.address}")
             else:
                 print(f"    MAC: {address.address}")
+        network_data["interfaces"].append(interface_info)
     
     print_subsection("Network I/O Statistics")
     io_counters = psutil.net_io_counters()
     if io_counters:
+        network_data["io_stats"] = {
+            "bytes_sent": io_counters.bytes_sent,
+            "bytes_recv": io_counters.bytes_recv,
+            "packets_sent": io_counters.packets_sent,
+            "packets_recv": io_counters.packets_recv,
+            "errin": io_counters.errin,
+            "errout": io_counters.errout,
+            "dropin": io_counters.dropin,
+            "dropout": io_counters.dropout
+        }
         print(f"  Bytes Sent: {get_size(io_counters.bytes_sent)}")
         print(f"  Bytes Received: {get_size(io_counters.bytes_recv)}")
         print(f"  Packets Sent: {io_counters.packets_sent}")
@@ -746,21 +941,27 @@ def get_network_info():
     print_subsection("Connectivity Test")
     try:
         socket.gethostbyname('8.8.8.8')
+        network_data["connectivity"]["internet"] = True
         print("  ✅ Internet connectivity: Available")
         
         dns_test = socket.gethostbyname('google.com')
+        network_data["connectivity"]["dns_resolution"] = True
         print(f"  ✅ DNS Resolution: google.com -> {dns_test}")
         
         if platform.system() == "Windows":
             ping = run_command("ping -n 1 8.8.8.8")
             if ping:
+                network_data["connectivity"]["ping_success"] = True
                 print("  ✅ Ping test: Successful")
         else:
             ping = run_command("ping -c 1 8.8.8.8")
             if ping:
+                network_data["connectivity"]["ping_success"] = True
                 print("  ✅ Ping test: Successful")
     except:
         print("  ❌ Internet connectivity: Not available or DNS issue")
+    
+    REPORT_DATA["network"] = network_data
 
 # =============================================================================
 # STEP 7: PYTORCH INSTALLATION WITH VERSION CHECK
@@ -777,25 +978,34 @@ def check_pytorch():
     """
     print_notes(7, notes)
     
+    pytorch_data = {
+        "installed": HAS_TORCH,
+        "version": None,
+        "latest_version": None,
+        "cuda_version": None,
+        "cudnn_version": None,
+        "cuda_available": False,
+        "is_latest": False
+    }
+    
     if HAS_TORCH:
         installed_version = torch.__version__
+        pytorch_data["version"] = installed_version
         print(f"  ✅ PyTorch installed: {installed_version}")
         
         # Check latest version from PyPI
         print("\n  🔍 Checking latest version from PyPI...")
         try:
-            import urllib.request
-            import json
-            
             url = "https://pypi.org/pypi/torch/json"
             with urllib.request.urlopen(url, timeout=5) as response:
                 data = json.loads(response.read().decode())
                 latest_version = data['info']['version']
+                pytorch_data["latest_version"] = latest_version
                 
                 print(f"  Latest PyTorch version: {latest_version}")
                 
-                # Compare versions
                 if installed_version == latest_version:
+                    pytorch_data["is_latest"] = True
                     print("  ✅ You have the latest version!")
                 else:
                     print(f"  ⚠️  You are using version {installed_version} (latest is {latest_version})")
@@ -808,17 +1018,23 @@ def check_pytorch():
         # Check CUDA compatibility
         if torch.cuda.is_available():
             cuda_version = torch.version.cuda
+            cudnn_version = torch.backends.cudnn.version()
+            pytorch_data["cuda_available"] = True
+            pytorch_data["cuda_version"] = cuda_version
+            pytorch_data["cudnn_version"] = cudnn_version
             print(f"\n  ✅ CUDA version: {cuda_version}")
-            print(f"  ✅ cuDNN version: {torch.backends.cudnn.version()}")
+            print(f"  ✅ cuDNN version: {cudnn_version}")
             print("  ✅ PyTorch is CUDA-enabled - GPU acceleration available!")
         else:
             print("  ⚠️  PyTorch is installed but CUDA is not available")
             print("  💡 Install CUDA version: pip install torch --index-url https://download.pytorch.org/whl/cu121")
         
+        REPORT_DATA["pytorch"] = pytorch_data
         return True
     else:
         print("  ❌ PyTorch NOT installed")
         print("   Run: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121")
+        REPORT_DATA["pytorch"] = pytorch_data
         return False
 
 # =============================================================================
@@ -838,13 +1054,26 @@ def get_gpu_info():
     """
     print_notes(8, notes)
     
+    gpu_data = {
+        "cuda_available": False,
+        "cuda_version": None,
+        "cudnn_version": None,
+        "gpu_count": 0,
+        "gpu_details": [],
+        "computation_success": False
+    }
+    
     if not HAS_TORCH:
         print("  ⚠️  PyTorch not installed - skipping CUDA check")
+        REPORT_DATA["gpu"] = gpu_data
         return
     
     print(f"  CUDA Available: {torch.cuda.is_available()}")
     
     if torch.cuda.is_available():
+        gpu_data["cuda_available"] = True
+        gpu_data["cuda_version"] = torch.version.cuda
+        gpu_data["cudnn_version"] = torch.backends.cudnn.version()
         print(f"  CUDA Version: {torch.version.cuda}")
         print(f"  cuDNN Version: {torch.backends.cudnn.version()}")
         print("  ✅ GPU acceleration is enabled!")
@@ -853,6 +1082,7 @@ def get_gpu_info():
         print("   Possible issues:")
         print("   - NVIDIA drivers not installed")
         print("   - PyTorch version without CUDA support")
+        REPORT_DATA["gpu"] = gpu_data
         return
     
     # Step 9: GPU Detection
@@ -866,13 +1096,29 @@ def get_gpu_info():
     print_notes(9, notes)
     
     gpu_count = torch.cuda.device_count()
+    gpu_data["gpu_count"] = gpu_count
     print(f"  GPU Count: {gpu_count}")
     
     if gpu_count > 0:
         for i in range(gpu_count):
+            gpu_detail = {
+                "index": i,
+                "name": torch.cuda.get_device_name(i)
+            }
+            props = torch.cuda.get_device_properties(i)
+            gpu_detail["compute_capability"] = f"{props.major}.{props.minor}"
+            gpu_detail["total_vram"] = props.total_memory / 1e9
+            gpu_detail["multi_processors"] = props.multi_processor_count
+            gpu_detail["cuda_cores"] = props.multi_processor_count * 128
+            gpu_detail["max_threads_per_block"] = props.max_threads_per_block
+            gpu_detail["max_threads_per_multi_processor"] = props.max_threads_per_multi_processor
+            gpu_detail["shared_memory_per_block"] = props.shared_memory_per_block / 1024
+            gpu_detail["total_shared_memory_per_multiprocessor"] = props.shared_memory_per_multiprocessor / 1024
+            
+            gpu_data["gpu_details"].append(gpu_detail)
+            
             print(f"\n  GPU {i}:")
             print(f"    Name: {torch.cuda.get_device_name(i)}")
-            props = torch.cuda.get_device_properties(i)
             print(f"    Compute Capability: {props.major}.{props.minor}")
             print(f"    Total VRAM: {props.total_memory / 1e9:.2f} GB")
             print(f"    Multi-processors: {props.multi_processor_count}")
@@ -900,6 +1146,7 @@ def get_gpu_info():
         print("  Performing matrix multiplication...")
         c = torch.matmul(a, b)
         
+        gpu_data["computation_success"] = True
         print("  ✅ Computation successful!")
         print(f"    Result shape: {c.shape}")
         print(f"    Result device: {c.device}")
@@ -907,6 +1154,8 @@ def get_gpu_info():
         print(f"    Memory reserved: {torch.cuda.memory_reserved() / 1e6:.2f} MB")
     except Exception as e:
         print(f"  ❌ Computation failed: {e}")
+    
+    REPORT_DATA["gpu"] = gpu_data
 
 # =============================================================================
 # STEP 11: GPU PERFORMANCE WITH SCALING
@@ -963,31 +1212,39 @@ def gpu_performance_test():
     print("  Matrix Multiplication Benchmark (10 iterations):")
     print("  " + "-" * 60)
     
-    # Test sizes up to 24576x24576 (which we know works well)
+    # Test sizes up to 24576x24576
     sizes = [1024, 2048, 4096, 8192, 12288, 16384, 24576]
     results = []
+    benchmark_data = []
     
     for size in sizes:
         result = benchmark_matmul(size)
         if result == "OOM":
             print(f"    {size}x{size}: ❌ Out of Memory (VRAM limit reached)")
+            benchmark_data.append({"size": size, "status": "OOM"})
             break
         elif result > 10000:  # 10 seconds
             print(f"    {size}x{size}: ⏱️  {result/1000:.2f}s (stopping at 10s threshold)")
+            benchmark_data.append({"size": size, "status": "timeout", "time_ms": result})
             break
         else:
             print(f"    {size}x{size}: {result:.2f} ms")
             results.append((size, result))
+            benchmark_data.append({"size": size, "status": "success", "time_ms": result})
     
     print("  " + "-" * 60)
+    
+    # Store benchmark data
+    REPORT_DATA["performance"]["matrix_benchmark"] = benchmark_data
     
     # Interpret results
     print("\n  📋 WHAT THESE BENCHMARKS MEAN FOR YOUR GPU:")
     print("  " + "-" * 60)
     
     if results:
-        # Analyze performance
         max_size, max_time = results[-1]
+        REPORT_DATA["performance"]["max_matrix_size"] = max_size
+        REPORT_DATA["performance"]["max_matrix_time_ms"] = max_time
         
         print(f"  ✅ Your RTX 5080 handled {max_size}x{max_size} matrix in {max_time:.2f}ms")
         print(f"  ✅ This is an excellent result for a consumer GPU")
@@ -995,12 +1252,11 @@ def gpu_performance_test():
         print("\n  📊 CAPABILITIES BASED ON MATRIX SIZE:")
         print("  " + "-" * 60)
         
-        # Check what sizes were achieved
-        has_4096 = any(s == 4096 for s, _ in results)
-        has_8192 = any(s == 8192 for s, _ in results)
-        has_12288 = any(s == 12288 for s, _ in results)
-        has_16384 = any(s == 16384 for s, _ in results)
         has_24576 = any(s == 24576 for s, _ in results)
+        has_16384 = any(s == 16384 for s, _ in results)
+        has_12288 = any(s == 12288 for s, _ in results)
+        has_8192 = any(s == 8192 for s, _ in results)
+        has_4096 = any(s == 4096 for s, _ in results)
         
         if has_24576:
             print("  🏆 Your GPU can handle operations up to 24576x24576")
@@ -1035,10 +1291,15 @@ def gpu_performance_test():
         
         print("\n  💡 RECOMMENDATIONS FOR YOUR RTX 5080:")
         print("  " + "-" * 60)
-        print("  • You can train models with up to 70B parameters (with quantization)")
-        print("  • Use mixed precision (FP16/BF16) for 2x faster training")
-        print("  • Use gradient accumulation for larger effective batch sizes")
-        print("  • Consider using xformers for optimized attention mechanisms")
+        recommendations = [
+            "Train models with up to 70B parameters (with quantization)",
+            "Use mixed precision (FP16/BF16) for 2x faster training",
+            "Use gradient accumulation for larger effective batch sizes",
+            "Consider using xformers for optimized attention mechanisms"
+        ]
+        REPORT_DATA["recommendations"].extend(recommendations)
+        for rec in recommendations:
+            print(f"  • {rec}")
 
 # =============================================================================
 # STEP 12: GPU MEMORY ALLOCATION TEST
@@ -1055,11 +1316,18 @@ def gpu_memory_test():
     """
     print_notes(12, notes)
     
+    memory_test_data = {
+        "total_vram_gb": None,
+        "allocations": [],
+        "max_allocated_gb": 0
+    }
+    
     try:
         print("  Testing memory allocation...")
         torch.cuda.empty_cache()
         
         total_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        memory_test_data["total_vram_gb"] = total_mem_gb
         print(f"  Total VRAM: {total_mem_gb:.2f} GB")
         
         test_sizes_gb = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 14.0]
@@ -1078,6 +1346,7 @@ def gpu_memory_test():
             try:
                 test_tensor = torch.randn(elements, device='cuda')
                 allocated = torch.cuda.memory_allocated() / 1e9
+                memory_test_data["allocations"].append({"size_gb": size_gb, "allocated_gb": allocated, "success": True})
                 print(f"    {size_gb:.1f} GB: ✅ Allocated (Total used: {allocated:.2f} GB)")
                 del test_tensor
                 torch.cuda.empty_cache()
@@ -1085,12 +1354,14 @@ def gpu_memory_test():
                 time.sleep(0.1)
             except RuntimeError as e:
                 if "out of memory" in str(e):
+                    memory_test_data["allocations"].append({"size_gb": size_gb, "success": False, "error": "OOM"})
                     print(f"    {size_gb:.1f} GB: ❌ Out of Memory")
                     break
                 else:
                     raise e
         
         print("  " + "-" * 40)
+        memory_test_data["max_allocated_gb"] = last_success
         print(f"\n  ✅ Maximum allocated: {last_success:.1f} GB")
         
         if last_success >= 12:
@@ -1104,6 +1375,8 @@ def gpu_memory_test():
             
     except Exception as e:
         print(f"  ⚠️  Memory test error: {e}")
+    
+    REPORT_DATA["performance"]["memory_test"] = memory_test_data
 
 # =============================================================================
 # STEP 13: NVIDIA DRIVER INFO
@@ -1120,6 +1393,21 @@ def get_nvidia_info():
     On Windows: Right-click terminal -> Run as administrator
     """
     print_notes(13, notes)
+    
+    nvidia_data = {
+        "driver_version": None,
+        "cuda_version": None,
+        "gpu_name": None,
+        "temperature": None,
+        "power_draw": None,
+        "power_limit": None,
+        "gpu_utilization": None,
+        "memory_utilization": None,
+        "performance_state": None,
+        "sm_clock": None,
+        "memory_clock": None,
+        "query_success": False
+    }
     
     query_success = False
     try:
@@ -1152,9 +1440,33 @@ def get_nvidia_info():
         
         if result.returncode == 0 and result.stdout.strip():
             parts = [p.strip() for p in result.stdout.strip().split(',')]
-            for i, (_, display_name) in enumerate(queries):
+            for i, (key, display_name) in enumerate(queries):
                 if i < len(parts) and parts[i] and parts[i] != '[Not Supported]':
+                    # Map to nvidia_data fields
+                    if key == 'name':
+                        nvidia_data["gpu_name"] = parts[i]
+                    elif key == 'driver_version':
+                        nvidia_data["driver_version"] = parts[i]
+                    elif key == 'cuda_version':
+                        nvidia_data["cuda_version"] = parts[i]
+                    elif key == 'temperature.gpu':
+                        nvidia_data["temperature"] = parts[i]
+                    elif key == 'power.draw':
+                        nvidia_data["power_draw"] = parts[i]
+                    elif key == 'power.limit':
+                        nvidia_data["power_limit"] = parts[i]
+                    elif key == 'utilization.gpu':
+                        nvidia_data["gpu_utilization"] = parts[i]
+                    elif key == 'utilization.memory':
+                        nvidia_data["memory_utilization"] = parts[i]
+                    elif key == 'pstate':
+                        nvidia_data["performance_state"] = parts[i]
+                    elif key == 'clocks.sm':
+                        nvidia_data["sm_clock"] = parts[i]
+                    elif key == 'clocks.mem':
+                        nvidia_data["memory_clock"] = parts[i]
                     print(f"  {display_name}: {parts[i]}")
+            nvidia_data["query_success"] = True
             query_success = True
         else:
             print("  ⚠️  nvidia-smi query returned no data")
@@ -1168,6 +1480,10 @@ def get_nvidia_info():
         print("\n  Using PyTorch fallback:")
         try:
             props = torch.cuda.get_device_properties(0)
+            nvidia_data["gpu_name"] = torch.cuda.get_device_name(0)
+            nvidia_data["total_vram_gb"] = props.total_memory / 1e9
+            nvidia_data["compute_capability"] = f"{props.major}.{props.minor}"
+            nvidia_data["multi_processors"] = props.multi_processor_count
             print(f"  GPU Name: {torch.cuda.get_device_name(0)}")
             print(f"  Total VRAM: {props.total_memory / 1e9:.2f} GB")
             print(f"  Compute Capability: {props.major}.{props.minor}")
@@ -1186,6 +1502,8 @@ def get_nvidia_info():
                     print(f"    {line}")
     except Exception as e:
         print(f"  ⚠️  Could not get nvidia-smi status: {e}")
+    
+    REPORT_DATA["gpu"]["nvidia_info"] = nvidia_data
 
 # =============================================================================
 # STEP 14: AI/ML SOFTWARE & VIRTUAL ENVIRONMENT
@@ -1201,6 +1519,17 @@ def get_software_info():
     Virtual environments prevent package conflicts. Always use one for AI projects.
     """
     print_notes(14, notes)
+    
+    software_data = {
+        "virtual_environment": {
+            "active": False,
+            "type": "None",
+            "path": None
+        },
+        "frameworks": {},
+        "installed_count": 0,
+        "total_count": 0
+    }
     
     # Virtual Environment Check
     print_subsection("Python Environment Check")
@@ -1223,14 +1552,20 @@ def get_software_info():
     python_path = sys.executable
     python_location = os.path.dirname(python_path)
     
+    software_data["virtual_environment"]["active"] = in_venv
+    software_data["virtual_environment"]["type"] = venv_type
+    software_data["virtual_environment"]["path"] = python_path
+    
     print(f"  Python Executable: {python_path}")
     print(f"  Python Location: {python_location}")
     
     if in_venv:
         print(f"  ✅ Virtual Environment: ACTIVE ({venv_type})")
         if 'VIRTUAL_ENV' in os.environ:
+            software_data["virtual_environment"]["env_path"] = os.environ['VIRTUAL_ENV']
             print(f"    Virtual Env Path: {os.environ['VIRTUAL_ENV']}")
         if 'CONDA_PREFIX' in os.environ:
+            software_data["virtual_environment"]["conda_path"] = os.environ['CONDA_PREFIX']
             print(f"    Conda Env Path: {os.environ['CONDA_PREFIX']}")
     else:
         print("  ⚠️  No virtual environment detected!")
@@ -1266,14 +1601,20 @@ def get_software_info():
         try:
             mod = importlib.import_module(module.replace('-', '_'))
             version = mod.__version__
+            software_data["frameworks"][name] = {"installed": True, "version": version}
             print(f"  ✅ {name}: {version}")
             installed += 1
             installed_list.append(name)
         except ImportError:
+            software_data["frameworks"][name] = {"installed": False, "version": None}
             print(f"  ❌ {name}: Not installed")
             missing_list.append(name)
     
+    software_data["installed_count"] = installed
+    software_data["total_count"] = len(frameworks)
     print(f"\n  Total AI/ML packages installed: {installed}/{len(frameworks)}")
+    
+    REPORT_DATA["software"] = software_data
     
     return in_venv, installed_list, missing_list
 
@@ -1295,6 +1636,19 @@ def cpu_stress_test():
     physical_cores = psutil.cpu_count(logical=False)
     logical_cores = psutil.cpu_count(logical=True)
     freq_before = psutil.cpu_freq()
+    
+    stress_data = {
+        "physical_cores": physical_cores,
+        "logical_cores": logical_cores,
+        "base_frequency": freq_before.max if freq_before else None,
+        "duration_seconds": None,
+        "threads_used": None,
+        "cpu_usage_after": None,
+        "frequency_drop_percent": None,
+        "issues": [],
+        "recommendations": [],
+        "status": "PASS"
+    }
     
     print(f"  Physical Cores: {physical_cores}")
     print(f"  Logical Cores: {logical_cores}")
@@ -1325,49 +1679,60 @@ def cpu_stress_test():
     cpu_percent = psutil.cpu_percent(interval=1)
     freq_after = psutil.cpu_freq()
     
+    stress_data["duration_seconds"] = elapsed
+    stress_data["threads_used"] = threads_used
+    stress_data["cpu_usage_after"] = cpu_percent
+    
     print(f"\n  📊 Results:")
     print(f"    Test Duration: {elapsed:.2f} seconds")
     print(f"    Threads Used: {threads_used}")
     print(f"    CPU Usage: {cpu_percent}%")
+    
+    freq_drop = 0
     if freq_before and freq_after:
         freq_drop = ((freq_before.max - freq_after.current) / freq_before.max) * 100 if freq_before.max > 0 else 0
+        stress_data["frequency_drop_percent"] = freq_drop
         print(f"    Frequency During Test: {freq_after.current:.2f} MHz (Drop: {freq_drop:.1f}%)")
     
     print("\n  📋 DIAGNOSIS:")
     print("  " + "-" * 50)
     
-    issues = []
-    recommendations = []
-    
     expected_time = 8.0
     if elapsed > expected_time * 1.5:
-        issues.append(f"⏱️  CPU test took {elapsed:.1f}s (expected ~{expected_time:.1f}s)")
-        recommendations.append("  - Check for thermal throttling using HWMonitor")
-        recommendations.append("  - Ensure adequate cooling and airflow")
+        stress_data["issues"].append(f"CPU test took {elapsed:.1f}s (expected ~{expected_time:.1f}s)")
+        stress_data["recommendations"].append("Check for thermal throttling using HWMonitor")
+        stress_data["recommendations"].append("Ensure adequate cooling and airflow")
+        stress_data["status"] = "WARNING"
     
     if freq_before and freq_after:
         if freq_drop > 20:
-            issues.append(f"🔥 Significant frequency drop: {freq_drop:.1f}%")
-            recommendations.append("  - Monitor CPU temperatures during load")
-            recommendations.append("  - Consider improving CPU cooling")
+            stress_data["issues"].append(f"Significant frequency drop: {freq_drop:.1f}%")
+            stress_data["recommendations"].append("Monitor CPU temperatures during load")
+            stress_data["recommendations"].append("Consider improving CPU cooling")
+            stress_data["status"] = "WARNING"
     
     if cpu_percent < 80 and threads_used > 1:
-        issues.append(f"⚠️  Low CPU utilization: {cpu_percent}% with {threads_used} threads")
-        recommendations.append("  - Check Windows Power Plan (set to High Performance)")
+        stress_data["issues"].append(f"Low CPU utilization: {cpu_percent}% with {threads_used} threads")
+        stress_data["recommendations"].append("Check Windows Power Plan (set to High Performance)")
+        stress_data["status"] = "WARNING"
     
     if physical_cores and physical_cores < 8:
-        issues.append(f"⚠️  Limited physical cores: {physical_cores} (recommended 8+ for AI)")
-        recommendations.append("  - Consider upgrading CPU for data preprocessing")
+        stress_data["issues"].append(f"Limited physical cores: {physical_cores} (recommended 8+ for AI)")
+        stress_data["recommendations"].append("Consider upgrading CPU for data preprocessing")
+        stress_data["status"] = "WARNING"
     
-    if issues:
+    if stress_data["issues"]:
         print("\n  ⚠️  Issues Found:")
-        for issue in issues:
+        for issue in stress_data["issues"]:
             print(f"    • {issue}")
         print("\n  📝 Recommendations:")
-        for rec in recommendations:
+        for rec in stress_data["recommendations"]:
             print(f"    {rec}")
     else:
         print("  ✅ No issues detected. CPU performance is excellent!")
+        stress_data["status"] = "PASS"
+    
+    REPORT_DATA["stress_tests"]["cpu"] = stress_data
 
 # =============================================================================
 # STEP 16: GPU STRESS TEST
@@ -1384,6 +1749,19 @@ def gpu_stress_test():
     For better utilization, use larger matrices or increase batch size in training.
     """
     print_notes(16, notes)
+    
+    stress_data = {
+        "iterations": 5,
+        "matrix_size": 8192,
+        "results": [],
+        "max_temperature": None,
+        "max_power": None,
+        "avg_temperature": None,
+        "duration_seconds": None,
+        "issues": [],
+        "recommendations": [],
+        "status": "PASS"
+    }
     
     if not HAS_TORCH:
         print("  ⚠️  GPU stress test skipped (PyTorch not installed)")
@@ -1451,11 +1829,24 @@ def gpu_stress_test():
                         max_temp = temp
                     if power > max_power:
                         max_power = power
+                    stress_data["results"].append({
+                        "iteration": i+1,
+                        "temperature": temp,
+                        "power": power,
+                        "utilization": util,
+                        "memory_used": mem
+                    })
                     print(f"    [Monitor] Util: {util}, Mem: {mem}, Temp: {temp}°C, Power: {power}W")
         except:
             pass
     
     elapsed = time.time() - start
+    avg_temp = sum(all_temps) / len(all_temps) if all_temps else 0
+    
+    stress_data["duration_seconds"] = elapsed
+    stress_data["max_temperature"] = max_temp
+    stress_data["max_power"] = max_power
+    stress_data["avg_temperature"] = avg_temp
     
     print(f"\n  ✅ GPU Test Complete in {elapsed:.2f} seconds")
     
@@ -1463,28 +1854,45 @@ def gpu_stress_test():
     print("  " + "-" * 50)
     
     if max_power < 100:
-        print("  ⚠️  Low power draw detected. This could mean:")
-        print("    • GPU is not being fully utilized")
-        print("    • Power supply is insufficient")
-        print("    • GPU is in power-saving mode")
-        print("  💡 Try increasing matrix size or batch size")
+        stress_data["issues"].append(f"Low power draw: {max_power:.1f}W (expected 300W)")
+        stress_data["recommendations"].append("Try increasing matrix size or batch size")
+        stress_data["recommendations"].append("Check if GPU is in power-saving mode")
+        stress_data["status"] = "WARNING"
     elif max_power > 300:
         print("  ✅ GPU power draw is excellent!")
     
     if max_temp > 85:
-        print(f"  🔥 High GPU temperature: {max_temp:.0f}°C")
-        print("  💡 Improve cooling or reduce workload")
+        stress_data["issues"].append(f"High GPU temperature: {max_temp:.0f}°C")
+        stress_data["recommendations"].append("Improve cooling or reduce workload")
+        stress_data["status"] = "WARNING"
     elif max_temp > 70:
         print(f"  ✅ Good GPU temperature: {max_temp:.0f}°C")
     else:
         print(f"  ✅ Excellent GPU temperature: {max_temp:.0f}°C")
     
+    if stress_data["issues"]:
+        print("\n  ⚠️  Issues Found:")
+        for issue in stress_data["issues"]:
+            print(f"    • {issue}")
+        print("\n  📝 Recommendations:")
+        for rec in stress_data["recommendations"]:
+            print(f"    {rec}")
+    else:
+        print("  ✅ No issues detected. GPU performance is excellent!")
+    
     print("\n  💡 PERFORMANCE TIPS:")
     print("  " + "-" * 50)
-    print("  • Use larger batch sizes for better utilization")
-    print("  • Enable mixed precision training (AMP)")
-    print("  • Use torch.compile() for PyTorch 2.0+")
-    print("  • Set Windows Power Plan to 'High Performance'")
+    tips = [
+        "Use larger batch sizes for better utilization",
+        "Enable mixed precision training (AMP)",
+        "Use torch.compile() for PyTorch 2.0+",
+        "Set Windows Power Plan to 'High Performance'"
+    ]
+    stress_data["recommendations"].extend(tips)
+    for tip in tips:
+        print(f"  • {tip}")
+    
+    REPORT_DATA["stress_tests"]["gpu"] = stress_data
 
 # =============================================================================
 # STEP 17: STORAGE SPEED TEST
@@ -1500,6 +1908,16 @@ def storage_speed_test():
     NVMe SSD: 2000+ MB/s (excellent), SATA SSD: 400-500 MB/s (good), HDD: 50-150 MB/s (too slow for AI).
     """
     print_notes(17, notes)
+    
+    storage_test_data = {
+        "test_size_mb": 100,
+        "write_speed_mb_s": None,
+        "read_speed_mb_s": None,
+        "drive_type": "Unknown",
+        "status": "PASS",
+        "issues": [],
+        "recommendations": []
+    }
     
     try:
         import tempfile
@@ -1523,6 +1941,9 @@ def storage_speed_test():
         
         os.remove(temp_file)
         
+        storage_test_data["write_speed_mb_s"] = write_speed
+        storage_test_data["read_speed_mb_s"] = read_speed
+        
         print(f"\n  📊 Results:")
         print(f"    Write Speed: {write_speed:.2f} MB/s")
         print(f"    Read Speed: {read_speed:.2f} MB/s")
@@ -1531,20 +1952,33 @@ def storage_speed_test():
         print("  " + "-" * 50)
         
         if write_speed > 500:
+            storage_test_data["drive_type"] = "NVMe SSD"
             print("  ✅ Excellent performance - NVMe SSD detected")
             if write_speed > 1000:
                 print("  ✅ PCIe Gen 3/4 NVMe SSD with excellent speeds")
         elif write_speed > 200:
+            storage_test_data["drive_type"] = "SATA SSD"
             print("  ✅ Good performance - SATA SSD detected")
+            storage_test_data["issues"].append("SATA SSD detected (slower than NVMe)")
+            storage_test_data["recommendations"].append("Consider upgrading to NVMe SSD for faster data loading")
+            storage_test_data["status"] = "WARNING"
         elif write_speed > 50:
-            print("  ⚠️  HDD detected - Slow for AI workloads")
-            print("  💡 Upgrade to NVMe SSD for better performance")
+            storage_test_data["drive_type"] = "HDD"
+            storage_test_data["issues"].append("HDD detected - Slow for AI workloads")
+            storage_test_data["recommendations"].append("Upgrade to NVMe SSD for significantly better performance")
+            storage_test_data["status"] = "WARNING"
         else:
-            print("  ❌ Very slow storage detected!")
-            print("  💡 IMMEDIATELY upgrade to NVMe SSD for AI work")
+            storage_test_data["drive_type"] = "Very Slow Drive"
+            storage_test_data["issues"].append("Very slow storage detected!")
+            storage_test_data["recommendations"].append("IMMEDIATELY upgrade to NVMe SSD for AI work")
+            storage_test_data["status"] = "FAIL"
             
     except Exception as e:
         print(f"  ⚠️  Storage test error: {e}")
+        storage_test_data["status"] = "ERROR"
+        storage_test_data["issues"].append(f"Storage test error: {e}")
+    
+    REPORT_DATA["storage"]["speed_test"] = storage_test_data
 
 # =============================================================================
 # STEP 18: NETWORK SPEED TEST
@@ -1561,6 +1995,15 @@ def network_speed_test():
     """
     print_notes(18, notes)
     
+    network_test_data = {
+        "download_mbps": None,
+        "upload_mbps": None,
+        "ping_ms": None,
+        "status": "PASS",
+        "issues": [],
+        "recommendations": []
+    }
+    
     if HAS_SPEEDTEST:
         try:
             print("  Running speed test (may take 30-60 seconds)...")
@@ -1570,6 +2013,10 @@ def network_speed_test():
             download = st.download() / 1_000_000
             upload = st.upload() / 1_000_000
             ping = st.results.ping
+            
+            network_test_data["download_mbps"] = download
+            network_test_data["upload_mbps"] = upload
+            network_test_data["ping_ms"] = ping
             
             print(f"\n  📊 Results:")
             print(f"    Download Speed: {download:.2f} Mbps")
@@ -1582,21 +2029,35 @@ def network_speed_test():
             if download > 100:
                 print("  ✅ Excellent download speed")
             elif download > 50:
+                network_test_data["issues"].append(f"Moderate download speed: {download:.1f} Mbps")
+                network_test_data["recommendations"].append("Large models may take time to download")
+                network_test_data["status"] = "WARNING"
                 print("  ⚠️  Adequate download speed")
                 print("  💡 Large models may take time to download")
             else:
+                network_test_data["issues"].append(f"Slow download speed: {download:.1f} Mbps")
+                network_test_data["recommendations"].append("Consider downloading models at work/school")
+                network_test_data["status"] = "WARNING"
                 print("  ❌ Slow download speed")
                 print("  💡 Consider downloading models at work/school")
             
             if upload > 20:
                 print("  ✅ Excellent upload speed")
             else:
+                network_test_data["issues"].append(f"Upload speed may be slow: {upload:.1f} Mbps")
+                network_test_data["recommendations"].append("Uploading models may take time")
+                network_test_data["status"] = "WARNING"
                 print("  ⚠️  Upload speed may be slow for sharing models")
                 
         except Exception as e:
             print(f"  ⚠️  Speed test error: {e}")
+            network_test_data["status"] = "ERROR"
+            network_test_data["issues"].append(f"Speed test error: {e}")
     else:
         print("  ⚠️  Speedtest not installed (pip install speedtest-cli)")
+        network_test_data["status"] = "SKIPPED"
+    
+    REPORT_DATA["network"]["speed_test"] = network_test_data
 
 # =============================================================================
 # STEP 19: POWER SUPPLY TEST
@@ -1614,6 +2075,18 @@ def power_supply_test():
     """
     print_notes(19, notes)
     
+    power_data = {
+        "current_power_w": None,
+        "power_limit_w": None,
+        "gpu_utilization": None,
+        "temperature": None,
+        "memory_total_gb": None,
+        "memory_used_gb": None,
+        "is_laptop": False,
+        "recommendations": [],
+        "status": "PASS"
+    }
+    
     print("  Power supply information:")
     print("  " + "-" * 50)
     
@@ -1627,6 +2100,12 @@ def power_supply_test():
         if result.returncode == 0 and result.stdout.strip():
             parts = [p.strip() for p in result.stdout.strip().split(',')]
             if len(parts) >= 6:
+                power_data["current_power_w"] = parts[0]
+                power_data["power_limit_w"] = parts[1]
+                power_data["gpu_utilization"] = parts[2]
+                power_data["temperature"] = parts[3]
+                power_data["memory_total_gb"] = parts[4]
+                power_data["memory_used_gb"] = parts[5]
                 print(f"  Current Power Draw: {parts[0]}")
                 print(f"  Power Limit (Max): {parts[1]}")
                 print(f"  GPU Utilization: {parts[2]}")
@@ -1650,31 +2129,46 @@ def power_supply_test():
     except:
         pass
     
+    power_data["is_laptop"] = is_laptop
+    
     if is_laptop:
         print("  ℹ️  Laptop detected - power delivery may be limited")
         print("  💡 For best performance, plug into AC power")
+        power_data["recommendations"].append("Use AC power for maximum performance")
+        power_data["status"] = "INFO"
     else:
         print("  ℹ️  Desktop detected - power supply should be adequate")
     
     print("\n  💡 RECOMMENDED POWER SUPPLY SPECIFICATIONS:")
     print("  " + "-" * 50)
-    print("  • RTX 5080 Recommended PSU: 750W - 850W")
-    print("  • Minimum PSU: 650W")
-    print("  • PCIe Power Cables: 3x 8-pin or 1x 12VHPWR")
+    recommendations = [
+        "RTX 5080 Recommended PSU: 750W - 850W",
+        "Minimum PSU: 650W",
+        "PCIe Power Cables: 3x 8-pin or 1x 12VHPWR"
+    ]
+    for rec in recommendations:
+        print(f"  • {rec}")
+        power_data["recommendations"].append(rec)
     
     print("\n  🛒 COMMERCIAL RECOMMENDATIONS:")
     print("  " + "-" * 50)
-    print("  POWER SUPPLY UNITS (PSUs):")
-    print("  • Corsair RM850x (850W, Gold) - $150")
-    print("  • Seasonic Focus GX-850 (850W, Gold) - $160")
-    print("  • ASUS ROG Thor 850P (850W, Platinum) - $250")
-    print("  • EVGA SuperNOVA 850 G6 (850W, Gold) - $140")
-    print("  • Be Quiet! Dark Power 12 850W (850W, Titanium) - $200")
+    commercial = [
+        "Corsair RM850x (850W, Gold) - $150",
+        "Seasonic Focus GX-850 (850W, Gold) - $160",
+        "ASUS ROG Thor 850P (850W, Platinum) - $250",
+        "EVGA SuperNOVA 850 G6 (850W, Gold) - $140",
+        "Be Quiet! Dark Power 12 850W (850W, Titanium) - $200"
+    ]
+    for rec in commercial:
+        print(f"  • {rec}")
+        power_data["recommendations"].append(rec)
     
     print("\n  POWER CABLES NEEDED:")
     print("  • RTX 5080 uses 12VHPWR connector (16-pin)")
     print("  • Most modern PSUs include this natively")
     print("  • Adapter: 3x 8-pin to 12VHPWR (included with GPU)")
+    
+    REPORT_DATA["power_supply"] = power_data
 
 # =============================================================================
 # STEP 20: SYSTEM SUMMARY
@@ -1691,25 +2185,39 @@ def system_summary():
     """
     print_notes(20, notes)
     
+    summary_data = {
+        "cpu": {},
+        "ram": {},
+        "gpu": {},
+        "storage": {},
+        "network": {},
+        "overall_ready": False
+    }
+    
     print("  📊 System Readiness Assessment:\n")
     
     cpu_cores = psutil.cpu_count(logical=True)
     cpu_score = "✅ Excellent" if cpu_cores >= 16 else "✅ Good" if cpu_cores >= 8 else "⚠️  Adequate" if cpu_cores >= 4 else "❌ Insufficient"
+    summary_data["cpu"] = {"cores": cpu_cores, "score": cpu_score}
     print(f"  CPU: {cpu_cores} cores - {cpu_score}")
     
     mem = psutil.virtual_memory()
     mem_gb = mem.total / 1e9
     mem_score = "✅ Excellent" if mem_gb >= 32 else "✅ Good" if mem_gb >= 16 else "⚠️  Adequate" if mem_gb >= 8 else "❌ Insufficient"
+    summary_data["ram"] = {"gb": mem_gb, "score": mem_score}
     print(f"  RAM: {mem_gb:.0f} GB - {mem_score}")
     
     if HAS_TORCH and torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
         gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
         gpu_score = "✅ Excellent" if "RTX 50" in gpu_name or "RTX 40" in gpu_name else "✅ Good"
+        summary_data["gpu"] = {"name": gpu_name, "vram_gb": gpu_mem, "score": gpu_score}
         print(f"  GPU: {gpu_name} ({gpu_mem:.1f} GB) - {gpu_score}")
     elif HAS_TORCH:
+        summary_data["gpu"] = {"name": "Not detected", "score": "❌ Not detected"}
         print("  GPU: ❌ Not detected - Will use CPU only (much slower)")
     else:
+        summary_data["gpu"] = {"name": "Could not check", "score": "⚠️  Could not check"}
         print("  GPU: ⚠️  Could not check GPU (PyTorch not installed)")
     
     try:
@@ -1723,30 +2231,43 @@ def system_summary():
                     break
         
         storage_score = "✅ Excellent (SSD)" if has_ssd else "⚠️  HDD detected (consider SSD upgrade)"
+        summary_data["storage"] = {"has_ssd": has_ssd, "score": storage_score}
         print(f"  Storage: {storage_score}")
     except:
+        summary_data["storage"] = {"has_ssd": False, "score": "⚠️  Could not determine"}
         print("  Storage: ⚠️  Could not determine drive type")
     
     try:
         socket.gethostbyname('8.8.8.8')
         network_score = "✅ Available"
+        summary_data["network"] = {"internet": True, "score": network_score}
     except:
         network_score = "❌ Not available"
+        summary_data["network"] = {"internet": False, "score": network_score}
     print(f"  Network Internet: {network_score}")
     
     print("\n" + "="*70)
     print("  Overall Readiness for AI/ML Workloads:")
     
     if HAS_TORCH and torch.cuda.is_available():
+        summary_data["overall_ready"] = True
         print("  ✅ Your system is READY for AI/ML development!")
         print(f"  ✅ RTX 5080 with 16GB VRAM is excellent for most AI models")
         print("  ✅ 32GB+ RAM can handle large datasets")
         print("  ✅ Modern CPU with 16+ cores for data preprocessing")
+        
+        REPORT_DATA["recommendations"].append("Your system is ready for AI/ML development")
+        REPORT_DATA["recommendations"].append("Use mixed precision training (AMP) for best performance")
+        REPORT_DATA["recommendations"].append("Consider using PyTorch 2.0+ for torch.compile() optimization")
     else:
+        summary_data["overall_ready"] = False
         print("  ⚠️  System is partially ready but missing GPU support")
         print("  ℹ️  Install NVIDIA drivers and PyTorch with CUDA support")
+        REPORT_DATA["recommendations"].append("Install NVIDIA drivers and PyTorch with CUDA support")
     
     print("="*70)
+    
+    REPORT_DATA["summary"] = summary_data
 
 # =============================================================================
 # VIRTUAL ENVIRONMENT SETUP WIZARD
@@ -1889,6 +2410,14 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     print("🔧 VIRTUAL ENVIRONMENT SETUP WIZARD")
     print("="*70)
     
+    # Initialize virtual environment setup data
+    venv_setup_data = {
+        "created": False,
+        "tool_used": None,
+        "env_name": None,
+        "packages_installed": False
+    }
+    
     if in_venv:
         print("\n✅ You are already in a virtual environment!")
         print("\n📦 Missing packages to install:")
@@ -1898,6 +2427,9 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
                     print(f"    - {pkg}")
         else:
             print("    ✅ All AI/ML packages are installed!")
+        venv_setup_data["created"] = True
+        venv_setup_data["tool_used"] = "existing"
+        REPORT_DATA["virtual_environment_setup"] = venv_setup_data
         return
     
     print("\n⚠️  You are NOT in a virtual environment.")
@@ -1910,6 +2442,7 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     if response != 'y':
         print("\n⏭️  Skipping virtual environment setup.")
         print("   You can create one manually later when ready.")
+        REPORT_DATA["virtual_environment_setup"] = venv_setup_data
         return
     
     print("\n  Which tool would you like to use?")
@@ -1930,6 +2463,7 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     
     if tool == 'none':
         print("\n⏭️  Skipping virtual environment setup.")
+        REPORT_DATA["virtual_environment_setup"] = venv_setup_data
         return
     
     env_name = input(f"\nEnter environment name (default: ai_env): ").strip()
@@ -1939,7 +2473,12 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     activate_cmd, pip_cmd, python_cmd = create_environment_with_tool(tool, env_name, installed_list)
     
     if activate_cmd is None:
+        REPORT_DATA["virtual_environment_setup"] = venv_setup_data
         return
+    
+    venv_setup_data["created"] = True
+    venv_setup_data["tool_used"] = tool
+    venv_setup_data["env_name"] = env_name
     
     print(f"\n  📝 To activate the virtual environment:")
     print(f"     {activate_cmd}")
@@ -1994,10 +2533,13 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
                         subprocess.run([sys.executable, '-m', 'pip', 'install'] + packages, check=True)
                 
                 print("  ✅ Packages installed successfully!")
+                venv_setup_data["packages_installed"] = True
                 
             except subprocess.CalledProcessError as e:
                 print(f"  ❌ Failed to install packages: {e}")
                 print("  ℹ️  Try installing manually after activating the environment")
+    
+    REPORT_DATA["virtual_environment_setup"] = venv_setup_data
     
     print("\n" + "="*70)
     print("✅ Virtual environment setup complete!")
@@ -2035,7 +2577,11 @@ def main():
     power_supply_test()         # Step 19
     system_summary()            # Step 20
     
+    # Virtual Environment Setup Wizard
     virtual_environment_setup_wizard(in_venv, installed_list, missing_list)
+    
+    # Save JSON report after virtual environment setup
+    save_json_report()
     
     print("\n" + "="*70)
     print("✅ System scan completed successfully!")
