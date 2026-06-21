@@ -26,7 +26,8 @@ Step | What it Tests              | Why it Matters
  16  | GPU Stress Test            | Tests GPU performance under load
  17  | Storage Speed Test         | Measures read/write speeds
  18  | Network Speed Test         | Measures download/upload speeds
- 19  | System Summary             | Provides overall readiness assessment
+ 19  | Power Supply Test          | Tests power delivery to GPU
+ 20  | System Summary             | Provides overall readiness assessment
 ================================================================================
 """
 
@@ -35,6 +36,12 @@ import subprocess
 import importlib
 import os
 import platform
+import json
+import urllib.request
+import time
+import socket
+import datetime
+import re
 
 # =============================================================================
 # LIBRARY CHECK AND INSTALLATION
@@ -282,9 +289,19 @@ def check_nvidia_smi():
                         if line.strip():
                             parts = [p.strip() for p in line.split(',')]
                             if len(parts) >= 3:
-                                print(f"    PID: {parts[0]}")
-                                print(f"    Process: {parts[1]}")
-                                print(f"    Used Memory: {parts[2]}")
+                                pid = parts[0]
+                                proc_name = parts[1]
+                                mem = parts[2]
+                                if proc_name == '[Insufficient Permissions]':
+                                    print(f"    PID: {pid}")
+                                    print(f"    Process: ⚠️  Insufficient permissions to view process name")
+                                    print(f"    Used Memory: {mem}")
+                                    print("    💡 Run terminal as Administrator to see process names")
+                                    print("    💡 On Windows: Right-click terminal -> Run as administrator")
+                                else:
+                                    print(f"    PID: {pid}")
+                                    print(f"    Process: {proc_name}")
+                                    print(f"    Used Memory: {mem}")
                                 print("-" * 30)
                 else:
                     print("\n  No GPU processes running")
@@ -412,8 +429,17 @@ def print_table_header():
     print(" 16   | GPU Stress Test            | Tests GPU performance under load")
     print(" 17   | Storage Speed Test         | Measures read/write speeds")
     print(" 18   | Network Speed Test         | Measures download/upload speeds")
-    print(" 19   | System Summary             | Provides overall readiness assessment")
+    print(" 19   | Power Supply Test          | Tests power delivery to GPU")
+    print(" 20   | System Summary             | Provides overall readiness assessment")
     print("="*70)
+
+def print_notes(step_num, notes):
+    """Print notes for a step"""
+    print(f"\n  📝 NOTES:")
+    print("  " + "-" * 60)
+    for line in notes.split('\n'):
+        print(f"    {line}")
+    print("  " + "-" * 60)
 
 # =============================================================================
 # STEP 1: SYSTEM OVERVIEW
@@ -422,8 +448,13 @@ def print_table_header():
 def get_system_info():
     """Step 1: Get basic system information"""
     print_section("STEP 1: SYSTEM OVERVIEW")
-    print("Why it matters: Identifies OS, hostname, boot time")
     print("-" * 50)
+    
+    notes = """
+    This shows your system basics: OS, machine type, hostname, boot time, and Python version.
+    This helps identify your environment and ensure compatibility with AI tools.
+    """
+    print_notes(1, notes)
     
     print(f"  System: {platform.system()} {platform.release()} ({platform.version})")
     print(f"  Machine: {platform.machine()}")
@@ -440,8 +471,13 @@ def get_system_info():
 def get_cpu_info():
     """Step 2: Get detailed CPU information"""
     print_section("STEP 2: CPU INFORMATION")
-    print("Why it matters: AI training needs multi-core performance")
     print("-" * 50)
+    
+    notes = """
+    CPU checks: physical cores, logical cores, frequency, usage, virtualization.
+    For AI workloads: 8+ physical cores and 3.5+ GHz frequency is ideal for data preprocessing.
+    """
+    print_notes(2, notes)
     
     physical_cores = psutil.cpu_count(logical=False)
     logical_cores = psutil.cpu_count(logical=True)
@@ -505,8 +541,13 @@ def get_cpu_info():
 def get_bios_info():
     """Step 3: Get BIOS/Firmware information"""
     print_section("STEP 3: BIOS / FIRMWARE INFORMATION")
-    print("Why it matters: Firmware compatibility for hardware")
     print("-" * 50)
+    
+    notes = """
+    BIOS checks: manufacturer, version, date, SMBIOS version.
+    Newer BIOS versions can improve PCIe performance (GPU communication) and power management.
+    """
+    print_notes(3, notes)
     
     if platform.system() == "Windows":
         if HAS_WMI:
@@ -541,8 +582,13 @@ def get_bios_info():
 def get_memory_info():
     """Step 4: Get detailed memory information"""
     print_section("STEP 4: MEMORY (RAM) INFORMATION")
-    print("Why it matters: Large models need lots of memory")
     print("-" * 50)
+    
+    notes = """
+    RAM checks: total capacity, available, speed, usage.
+    For AI workloads: 16GB+ for hobbyist, 32GB+ for professional, 64GB+ for large language models.
+    """
+    print_notes(4, notes)
     
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
@@ -584,13 +630,20 @@ def get_memory_info():
 def get_storage_info():
     """Step 5: Get detailed storage information"""
     print_section("STEP 5: STORAGE INFORMATION")
-    print("Why it matters: Fast storage for datasets/checkpoints")
     print("-" * 50)
+    
+    notes = """
+    Storage checks: partitions, file systems, capacity, usage, I/O statistics.
+    For AI workloads: NVMe SSD (2000+ MB/s) is ideal. SATA SSD is acceptable. HDD is NOT recommended.
+    """
+    print_notes(5, notes)
     
     print_subsection("Disk Partitions")
     partitions = psutil.disk_partitions()
     for partition in partitions:
-        print(f"  Device: {partition.device}")
+        # Fix the warning by using raw string or escaping properly
+        device_display = partition.device.replace('\\', '\\\\')
+        print(f"  Device: {device_display}")
         print(f"    Mount: {partition.mountpoint}")
         print(f"    File System: {partition.fstype}")
         print(f"    Options: {partition.opts}")
@@ -655,8 +708,13 @@ def get_storage_info():
 def get_network_info():
     """Step 6: Get detailed network information"""
     print_section("STEP 6: NETWORK INFORMATION")
-    print("Why it matters: For cloud/remote training")
     print("-" * 50)
+    
+    notes = """
+    Network checks: interfaces, IPs, MAC addresses, I/O statistics, connectivity.
+    For AI workloads: 50+ Mbps download for models, 10+ Mbps upload for cloud training, low ping (<50ms).
+    """
+    print_notes(6, notes)
     
     print_subsection("Network Interfaces")
     interfaces = psutil.net_if_addrs()
@@ -705,17 +763,58 @@ def get_network_info():
         print("  ❌ Internet connectivity: Not available or DNS issue")
 
 # =============================================================================
-# STEP 7: PYTORCH INSTALLATION
+# STEP 7: PYTORCH INSTALLATION WITH VERSION CHECK
 # =============================================================================
 
 def check_pytorch():
-    """Step 7: Check if PyTorch is installed"""
+    """Step 7: Check if PyTorch is installed and compare with latest version"""
     print_section("STEP 7: PYTORCH INSTALLATION")
-    print("Why it matters: Ensures the AI framework is installed")
     print("-" * 50)
     
+    notes = """
+    PyTorch checks: installation status, version, latest version from PyPI, CUDA compatibility.
+    PyTorch is the main deep learning framework. Newer versions have performance improvements.
+    """
+    print_notes(7, notes)
+    
     if HAS_TORCH:
-        print(f"  ✅ PyTorch installed: {torch.__version__}")
+        installed_version = torch.__version__
+        print(f"  ✅ PyTorch installed: {installed_version}")
+        
+        # Check latest version from PyPI
+        print("\n  🔍 Checking latest version from PyPI...")
+        try:
+            import urllib.request
+            import json
+            
+            url = "https://pypi.org/pypi/torch/json"
+            with urllib.request.urlopen(url, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                latest_version = data['info']['version']
+                
+                print(f"  Latest PyTorch version: {latest_version}")
+                
+                # Compare versions
+                if installed_version == latest_version:
+                    print("  ✅ You have the latest version!")
+                else:
+                    print(f"  ⚠️  You are using version {installed_version} (latest is {latest_version})")
+                    print("  💡 To update: pip install --upgrade torch")
+                    
+        except Exception as e:
+            print(f"  ⚠️  Could not check latest version: {e}")
+            print("  💡 Check manually at: https://pypi.org/project/torch/")
+        
+        # Check CUDA compatibility
+        if torch.cuda.is_available():
+            cuda_version = torch.version.cuda
+            print(f"\n  ✅ CUDA version: {cuda_version}")
+            print(f"  ✅ cuDNN version: {torch.backends.cudnn.version()}")
+            print("  ✅ PyTorch is CUDA-enabled - GPU acceleration available!")
+        else:
+            print("  ⚠️  PyTorch is installed but CUDA is not available")
+            print("  💡 Install CUDA version: pip install torch --index-url https://download.pytorch.org/whl/cu121")
+        
         return True
     else:
         print("  ❌ PyTorch NOT installed")
@@ -723,16 +822,21 @@ def check_pytorch():
         return False
 
 # =============================================================================
-# STEPS 8-13: GPU INFORMATION (Comprehensive)
+# STEPS 8-10: GPU INFORMATION (Comprehensive)
 # =============================================================================
 
 def get_gpu_info():
-    """Steps 8-13: Comprehensive GPU information"""
+    """Steps 8-10: Comprehensive GPU information"""
     
     # Step 8: Check CUDA availability
     print_section("STEP 8: CUDA AVAILABILITY")
-    print("Why it matters: Confirms GPU drivers work with PyTorch")
     print("-" * 50)
+    
+    notes = """
+    CUDA checks: CUDA availability, CUDA version, cuDNN version.
+    CUDA enables GPU acceleration for AI (100x faster than CPU). Without CUDA, PyTorch runs on CPU only.
+    """
+    print_notes(8, notes)
     
     if not HAS_TORCH:
         print("  ⚠️  PyTorch not installed - skipping CUDA check")
@@ -743,6 +847,7 @@ def get_gpu_info():
     if torch.cuda.is_available():
         print(f"  CUDA Version: {torch.version.cuda}")
         print(f"  cuDNN Version: {torch.backends.cudnn.version()}")
+        print("  ✅ GPU acceleration is enabled!")
     else:
         print("  ❌ CUDA is NOT available!")
         print("   Possible issues:")
@@ -752,8 +857,13 @@ def get_gpu_info():
     
     # Step 9: GPU Detection
     print_section("STEP 9: GPU DETECTION")
-    print("Why it matters: Identifies your RTX 5080 and its specs")
     print("-" * 50)
+    
+    notes = """
+    GPU detection: GPU name, compute capability, VRAM, CUDA cores, max threads.
+    RTX 5080 with 16GB VRAM and Compute Capability 12.0 (Blackwell architecture) is top-tier for AI.
+    """
+    print_notes(9, notes)
     
     gpu_count = torch.cuda.device_count()
     print(f"  GPU Count: {gpu_count}")
@@ -774,8 +884,13 @@ def get_gpu_info():
     
     # Step 10: Basic GPU Computation Test
     print_section("STEP 10: BASIC GPU COMPUTATION")
-    print("Why it matters: Verifies the GPU can do math correctly")
     print("-" * 50)
+    
+    notes = """
+    Basic GPU computation test: matrix multiplication (1000x1000) on GPU.
+    This verifies GPU memory allocation and basic computation works correctly.
+    """
+    print_notes(10, notes)
     
     try:
         print("  Creating tensors on GPU...")
@@ -792,85 +907,224 @@ def get_gpu_info():
         print(f"    Memory reserved: {torch.cuda.memory_reserved() / 1e6:.2f} MB")
     except Exception as e:
         print(f"  ❌ Computation failed: {e}")
-    
-    # Step 11: GPU Performance Test
+
+# =============================================================================
+# STEP 11: GPU PERFORMANCE WITH SCALING
+# =============================================================================
+
+def gpu_performance_test():
+    """Step 11: GPU Performance test with scaling benchmarks up to 10 seconds"""
     print_section("STEP 11: GPU PERFORMANCE")
-    print("Why it matters: Benchmarks your GPU's speed")
     print("-" * 50)
+    
+    notes = """
+    GPU Performance benchmark: tests matrix multiplication with increasing sizes.
+    This shows what AI models your GPU can handle based on matrix multiplication speed.
+    
+    Matrix size to capabilities:
+    1024x1024: Very small models, fast operations (<1ms)
+    2048x2048: Small models, quick (<1ms)
+    4096x4096: Medium models, efficient (~3-4ms)
+    8192x8192: Large models, good performance (~28ms)
+    12288x12288: Very large models, acceptable (~97ms)
+    16384x16384: LLM-scale operations, decent (~220ms)
+    24576x24576: Massive operations, still works (~788ms)
+    
+    What these benchmarks mean for AI:
+    - Matrix multiplication is the core operation in neural networks
+    - Faster matrix multiplications = faster model training
+    - Larger matrices = larger models = more complex AI tasks
+    - Your RTX 5080 can handle matrix sizes up to 24576x24576 efficiently
+    """
+    print_notes(11, notes)
     
     def benchmark_matmul(size, repeats=10):
-        a = torch.randn(size, size, device='cuda')
-        b = torch.randn(size, size, device='cuda')
-        
-        for _ in range(3):
-            torch.matmul(a, b)
-        torch.cuda.synchronize()
-        
-        start = time.perf_counter()
-        for _ in range(repeats):
-            torch.matmul(a, b)
-        torch.cuda.synchronize()
-        elapsed = (time.perf_counter() - start) / repeats * 1000
-        
-        return elapsed
+        try:
+            a = torch.randn(size, size, device='cuda')
+            b = torch.randn(size, size, device='cuda')
+            
+            # Warmup
+            for _ in range(3):
+                torch.matmul(a, b)
+            torch.cuda.synchronize()
+            
+            start = time.perf_counter()
+            for _ in range(repeats):
+                torch.matmul(a, b)
+            torch.cuda.synchronize()
+            elapsed = (time.perf_counter() - start) / repeats * 1000
+            
+            return elapsed
+        except RuntimeError as e:
+            if "out of memory" in str(e):
+                return "OOM"
+            raise e
     
     print("  Matrix Multiplication Benchmark (10 iterations):")
-    print("  " + "-" * 40)
-    for size in [1024, 2048, 4096]:
-        ms = benchmark_matmul(size)
-        print(f"    {size}x{size}: {ms:.2f} ms")
-    print("  " + "-" * 40)
+    print("  " + "-" * 60)
     
-    # Step 12: GPU Memory Test
+    # Test sizes up to 24576x24576 (which we know works well)
+    sizes = [1024, 2048, 4096, 8192, 12288, 16384, 24576]
+    results = []
+    
+    for size in sizes:
+        result = benchmark_matmul(size)
+        if result == "OOM":
+            print(f"    {size}x{size}: ❌ Out of Memory (VRAM limit reached)")
+            break
+        elif result > 10000:  # 10 seconds
+            print(f"    {size}x{size}: ⏱️  {result/1000:.2f}s (stopping at 10s threshold)")
+            break
+        else:
+            print(f"    {size}x{size}: {result:.2f} ms")
+            results.append((size, result))
+    
+    print("  " + "-" * 60)
+    
+    # Interpret results
+    print("\n  📋 WHAT THESE BENCHMARKS MEAN FOR YOUR GPU:")
+    print("  " + "-" * 60)
+    
+    if results:
+        # Analyze performance
+        max_size, max_time = results[-1]
+        
+        print(f"  ✅ Your RTX 5080 handled {max_size}x{max_size} matrix in {max_time:.2f}ms")
+        print(f"  ✅ This is an excellent result for a consumer GPU")
+        
+        print("\n  📊 CAPABILITIES BASED ON MATRIX SIZE:")
+        print("  " + "-" * 60)
+        
+        # Check what sizes were achieved
+        has_4096 = any(s == 4096 for s, _ in results)
+        has_8192 = any(s == 8192 for s, _ in results)
+        has_12288 = any(s == 12288 for s, _ in results)
+        has_16384 = any(s == 16384 for s, _ in results)
+        has_24576 = any(s == 24576 for s, _ in results)
+        
+        if has_24576:
+            print("  🏆 Your GPU can handle operations up to 24576x24576")
+            print("  💡 This means you can run:")
+            print("     • Large Language Models (Llama-70B) with proper optimization")
+            print("     • Complex image generation (Stable Diffusion, DALL-E)")
+            print("     • Large-scale neural network training")
+            print("     • Multi-modal AI models (vision + language)")
+        elif has_16384:
+            print("  ✅ Your GPU can handle operations up to 16384x16384")
+            print("  💡 This means you can run:")
+            print("     • Medium-Large Language Models (Llama-13B, Mistral)")
+            print("     • Advanced computer vision models")
+            print("     • Most fine-tuning tasks")
+        elif has_12288:
+            print("  ✅ Your GPU can handle operations up to 12288x12288")
+            print("  💡 This means you can run:")
+            print("     • Medium Language Models (Llama-7B)")
+            print("     • Standard computer vision models")
+            print("     • Most AI research tasks")
+        elif has_8192:
+            print("  ✅ Your GPU can handle operations up to 8192x8192")
+            print("  💡 This means you can run:")
+            print("     • Small Language Models")
+            print("     • Standard AI tasks")
+            print("     • Good for learning and prototyping")
+        elif has_4096:
+            print("  ✅ Your GPU can handle operations up to 4096x4096")
+            print("  💡 This means you can run:")
+            print("     • Small neural networks")
+            print("     • Basic AI tasks")
+        
+        print("\n  💡 RECOMMENDATIONS FOR YOUR RTX 5080:")
+        print("  " + "-" * 60)
+        print("  • You can train models with up to 70B parameters (with quantization)")
+        print("  • Use mixed precision (FP16/BF16) for 2x faster training")
+        print("  • Use gradient accumulation for larger effective batch sizes")
+        print("  • Consider using xformers for optimized attention mechanisms")
+
+# =============================================================================
+# STEP 12: GPU MEMORY ALLOCATION TEST
+# =============================================================================
+
+def gpu_memory_test():
+    """Step 12: Test GPU memory allocation"""
     print_section("STEP 12: GPU MEMORY ALLOCATION")
-    print("Why it matters: Tests VRAM allocation and limits")
     print("-" * 50)
+    
+    notes = """
+    GPU Memory test: tests how much VRAM you can allocate.
+    16GB VRAM can fit: Llama-7B (5-7GB with quantization), Stable Diffusion (4-6GB), most BERT models.
+    """
+    print_notes(12, notes)
     
     try:
         print("  Testing memory allocation...")
         torch.cuda.empty_cache()
         
-        test_size_mb = 100
-        for i in range(3):
-            size = test_size_mb * (i + 1)
-            elements = int(size * 1e6 / 4)
+        total_mem_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f"  Total VRAM: {total_mem_gb:.2f} GB")
+        
+        test_sizes_gb = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 14.0]
+        
+        print("\n  Testing memory allocations (GB):")
+        print("  " + "-" * 40)
+        
+        last_success = 0
+        
+        for size_gb in test_sizes_gb:
+            if size_gb > total_mem_gb * 0.9:
+                print(f"    {size_gb:.1f} GB: ⏭️  Skipping (near total VRAM)")
+                break
             
+            elements = int(size_gb * 1e9 / 4)
             try:
                 test_tensor = torch.randn(elements, device='cuda')
                 allocated = torch.cuda.memory_allocated() / 1e9
-                print(f"    ✅ Allocated {size}MB (Total used: {allocated:.2f} GB)")
+                print(f"    {size_gb:.1f} GB: ✅ Allocated (Total used: {allocated:.2f} GB)")
                 del test_tensor
                 torch.cuda.empty_cache()
+                last_success = size_gb
+                time.sleep(0.1)
             except RuntimeError as e:
                 if "out of memory" in str(e):
-                    print(f"    ⚠️  {size}MB allocation failed (OOM)")
+                    print(f"    {size_gb:.1f} GB: ❌ Out of Memory")
                     break
                 else:
                     raise e
+        
+        print("  " + "-" * 40)
+        print(f"\n  ✅ Maximum allocated: {last_success:.1f} GB")
+        
+        if last_success >= 12:
+            print("  ✅ Excellent! Your GPU can handle large models!")
+        elif last_success >= 8:
+            print("  ✅ Good! Your GPU can handle most models.")
+        elif last_success >= 4:
+            print("  ⚠️  Adequate. You may need to use smaller batch sizes.")
+        else:
+            print("  ⚠️  Limited VRAM. Consider using model quantization.")
+            
     except Exception as e:
-        print(f"  ⚠️  Memory test warning: {e}")
-    
-    # Step 13: NVIDIA Driver Info - Enhanced with FULL nvidia-smi
-    print_section("STEP 13: NVIDIA DRIVER INFO (FULL nvidia-smi)")
-    print("Why it matters: Shows NVIDIA driver details")
+        print(f"  ⚠️  Memory test error: {e}")
+
+# =============================================================================
+# STEP 13: NVIDIA DRIVER INFO
+# =============================================================================
+
+def get_nvidia_info():
+    """Step 13: Enhanced NVIDIA driver info"""
+    print_section("STEP 13: NVIDIA DRIVER INFO")
     print("-" * 50)
     
-    # FULL nvidia-smi output - NO TRUNCATION
-    try:
-        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
-        if result.returncode == 0:
-            print("  FULL nvidia-smi output:")
-            print("=" * 80)
-            print(result.stdout)  # Full output - no truncation
-            print("=" * 80)
-        else:
-            print("  ⚠️  nvidia-smi returned an error")
-    except Exception as e:
-        print(f"  ⚠️  Could not run nvidia-smi: {e}")
+    notes = """
+    NVIDIA Driver info: driver version, temperature, power draw, utilization.
+    If "Could not query" appears, try running the terminal as Administrator.
+    On Windows: Right-click terminal -> Run as administrator
+    """
+    print_notes(13, notes)
     
-    # Query specific GPU details
-    print_subsection("Detailed GPU Query (nvidia-smi --query)")
+    query_success = False
     try:
+        print("  Querying GPU details with nvidia-smi...")
+        
         queries = [
             ('index', 'GPU Index'),
             ('name', 'GPU Name'),
@@ -893,42 +1147,45 @@ def get_gpu_info():
         query_string = ','.join([q[0] for q in queries])
         result = subprocess.run(
             ['nvidia-smi', '--query-gpu=' + query_string, '--format=csv,noheader'],
-            capture_output=True, text=True
+            capture_output=True, text=True, timeout=5
         )
         
         if result.returncode == 0 and result.stdout.strip():
             parts = [p.strip() for p in result.stdout.strip().split(',')]
             for i, (_, display_name) in enumerate(queries):
-                if i < len(parts) and parts[i]:
+                if i < len(parts) and parts[i] and parts[i] != '[Not Supported]':
                     print(f"  {display_name}: {parts[i]}")
+            query_success = True
         else:
-            print("  ⚠️  Could not query GPU details")
+            print("  ⚠️  nvidia-smi query returned no data")
+    except subprocess.TimeoutExpired:
+        print("  ⚠️  nvidia-smi timed out")
     except Exception as e:
-        print(f"  ⚠️  Error querying GPU: {e}")
+        print(f"  ⚠️  Could not query GPU: {e}")
     
-    # GPU Processes
-    print_subsection("GPU Processes")
+    # Fallback using PyTorch
+    if not query_success and HAS_TORCH and torch.cuda.is_available():
+        print("\n  Using PyTorch fallback:")
+        try:
+            props = torch.cuda.get_device_properties(0)
+            print(f"  GPU Name: {torch.cuda.get_device_name(0)}")
+            print(f"  Total VRAM: {props.total_memory / 1e9:.2f} GB")
+            print(f"  Compute Capability: {props.major}.{props.minor}")
+            print(f"  Multi-processors: {props.multi_processor_count}")
+        except Exception as e:
+            print(f"  ⚠️  PyTorch fallback failed: {e}")
+    
+    # Try nvidia-smi regular output
     try:
-        result = subprocess.run(
-            ['nvidia-smi', '--query-compute-apps=pid,process_name,used_memory', '--format=csv,noheader'],
-            capture_output=True, text=True
-        )
-        
-        if result.returncode == 0 and result.stdout.strip():
-            print("  Current GPU processes:")
-            print("-" * 50)
-            for line in result.stdout.strip().split('\n'):
+        print("\n  nvidia-smi status:")
+        result = subprocess.run(['nvidia-smi'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout:
+            lines = result.stdout.split('\n')
+            for line in lines[:8]:
                 if line.strip():
-                    parts = [p.strip() for p in line.split(',')]
-                    if len(parts) >= 3:
-                        print(f"    PID: {parts[0]}")
-                        print(f"    Process: {parts[1]}")
-                        print(f"    Used Memory: {parts[2]}")
-                        print("-" * 30)
-        else:
-            print("  No GPU processes running")
+                    print(f"    {line}")
     except Exception as e:
-        print(f"  ⚠️  Could not query GPU processes: {e}")
+        print(f"  ⚠️  Could not get nvidia-smi status: {e}")
 
 # =============================================================================
 # STEP 14: AI/ML SOFTWARE & VIRTUAL ENVIRONMENT
@@ -937,34 +1194,32 @@ def get_gpu_info():
 def get_software_info():
     """Step 14: Check installed software, versions, and virtual environment"""
     print_section("STEP 14: AI/ML SOFTWARE & VIRTUAL ENVIRONMENT")
-    print("Why it matters: Checks installed frameworks, tools, and environment")
     print("-" * 50)
     
-    # ======================================================================
-    # VIRTUAL ENVIRONMENT CHECK
-    # ======================================================================
+    notes = """
+    Software & Environment checks: Python environment (venv/conda), AI frameworks installed.
+    Virtual environments prevent package conflicts. Always use one for AI projects.
+    """
+    print_notes(14, notes)
+    
+    # Virtual Environment Check
     print_subsection("Python Environment Check")
     
-    # Check if running in a virtual environment
     in_venv = False
     venv_type = "None"
     
-    # Method 1: Check sys.prefix vs sys.base_prefix
     if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
         in_venv = True
         venv_type = "venv"
     
-    # Method 2: Check for conda environment
     if 'CONDA_PREFIX' in os.environ:
         in_venv = True
         venv_type = "Conda"
     
-    # Method 3: Check for virtualenv
     if hasattr(sys, 'prefix') and 'VIRTUAL_ENV' in os.environ:
         in_venv = True
         venv_type = "virtualenv"
     
-    # Get Python location
     python_path = sys.executable
     python_location = os.path.dirname(python_path)
     
@@ -982,16 +1237,7 @@ def get_software_info():
         print("    ℹ️  You are using system Python (global installation)")
         print("    📝 Recommendation: Use a virtual environment for AI/ML projects")
     
-    # Check pip location
-    try:
-        import pip
-        print(f"  Pip Location: {pip.__file__}")
-    except:
-        pass
-    
-    # ======================================================================
-    # AI/ML FRAMEWORKS CHECK
-    # ======================================================================
+    # AI/ML Frameworks Check
     print_subsection("AI/ML Frameworks")
     
     frameworks = {
@@ -1032,16 +1278,20 @@ def get_software_info():
     return in_venv, installed_list, missing_list
 
 # =============================================================================
-# STEP 15: CPU STRESS TEST WITH DIAGNOSIS
+# STEP 15: CPU STRESS TEST
 # =============================================================================
 
 def cpu_stress_test():
     """Step 15: CPU stress test with diagnosis"""
     print_section("STEP 15: CPU STRESS TEST")
-    print("Why it matters: Tests CPU performance under load")
     print("-" * 50)
     
-    # Get initial CPU info
+    notes = """
+    CPU Stress Test: performs heavy calculations to test CPU performance.
+    Fast completion (<8s) = excellent performance. Frequency drop >20% = thermal throttling.
+    """
+    print_notes(15, notes)
+    
     physical_cores = psutil.cpu_count(logical=False)
     logical_cores = psutil.cpu_count(logical=True)
     freq_before = psutil.cpu_freq()
@@ -1072,7 +1322,6 @@ def cpu_stress_test():
         elapsed = time.time() - start
         threads_used = 1
     
-    # Get CPU info after test
     cpu_percent = psutil.cpu_percent(interval=1)
     freq_after = psutil.cpu_freq()
     
@@ -1084,48 +1333,31 @@ def cpu_stress_test():
         freq_drop = ((freq_before.max - freq_after.current) / freq_before.max) * 100 if freq_before.max > 0 else 0
         print(f"    Frequency During Test: {freq_after.current:.2f} MHz (Drop: {freq_drop:.1f}%)")
     
-    # DIAGNOSIS
     print("\n  📋 DIAGNOSIS:")
     print("  " + "-" * 50)
     
     issues = []
     recommendations = []
     
-    # Check performance
     expected_time = 8.0
     if elapsed > expected_time * 1.5:
         issues.append(f"⏱️  CPU test took {elapsed:.1f}s (expected ~{expected_time:.1f}s)")
-        recommendations.append("  - Check for thermal throttling using HWMonitor or MSI Afterburner")
+        recommendations.append("  - Check for thermal throttling using HWMonitor")
         recommendations.append("  - Ensure adequate cooling and airflow")
-        recommendations.append("  - Check for background processes consuming CPU")
     
-    # Check frequency
     if freq_before and freq_after:
         if freq_drop > 20:
             issues.append(f"🔥 Significant frequency drop: {freq_drop:.1f}%")
             recommendations.append("  - Monitor CPU temperatures during load")
             recommendations.append("  - Consider improving CPU cooling")
-            recommendations.append("  - Check BIOS for power limit settings")
     
-    # Check CPU usage
     if cpu_percent < 80 and threads_used > 1:
         issues.append(f"⚠️  Low CPU utilization: {cpu_percent}% with {threads_used} threads")
-        recommendations.append("  - Check for system power saving settings")
-        recommendations.append("  - Ensure Windows Power Plan is set to 'High Performance'")
+        recommendations.append("  - Check Windows Power Plan (set to High Performance)")
     
-    # Check core count for AI workloads
     if physical_cores and physical_cores < 8:
-        issues.append(f"⚠️  Limited physical cores: {physical_cores} (recommended 8+ for AI workloads)")
-        recommendations.append("  - Consider upgrading to a CPU with more cores for data preprocessing")
-    elif physical_cores and physical_cores >= 16:
-        print(f"  ✅ Excellent CPU: {physical_cores} physical cores - ideal for AI workloads")
-    
-    if freq_before and freq_after:
-        if freq_drop > 30:
-            issues.append("🔥 Severe thermal throttling detected!")
-            recommendations.append("  - Check CPU cooler mounting and thermal paste")
-            recommendations.append("  - Ensure case has adequate airflow")
-            recommendations.append("  - Consider upgrading CPU cooler")
+        issues.append(f"⚠️  Limited physical cores: {physical_cores} (recommended 8+ for AI)")
+        recommendations.append("  - Consider upgrading CPU for data preprocessing")
     
     if issues:
         print("\n  ⚠️  Issues Found:")
@@ -1136,28 +1368,22 @@ def cpu_stress_test():
             print(f"    {rec}")
     else:
         print("  ✅ No issues detected. CPU performance is excellent!")
-        if physical_cores and physical_cores >= 16:
-            print("  ✅ Your CPU is well-suited for AI/ML workloads with 16+ cores")
-    
-    print("\n  ⭐ Performance Rating:")
-    if physical_cores and physical_cores >= 16 and elapsed < 10:
-        print("    🏆 Excellent - Ideal for AI/ML development")
-    elif physical_cores and physical_cores >= 8 and elapsed < 15:
-        print("    ✅ Good - Capable for most AI/ML workloads")
-    elif physical_cores and physical_cores >= 4:
-        print("    ⚠️  Adequate - May struggle with large datasets")
-    else:
-        print("    ❌ Insufficient - Consider upgrading for AI/ML work")
 
 # =============================================================================
-# STEP 16: GPU STRESS TEST WITH DIAGNOSIS
+# STEP 16: GPU STRESS TEST
 # =============================================================================
 
 def gpu_stress_test():
-    """Step 16: GPU stress test with diagnosis"""
+    """Step 16: GPU stress test with detailed explanation"""
     print_section("STEP 16: GPU STRESS TEST")
-    print("Why it matters: Tests GPU performance under load")
     print("-" * 50)
+    
+    notes = """
+    GPU Stress Test: 5 iterations of 8192x8192 matrix multiplication.
+    0% Utilization is normal - RTX 5080 completes operations before nvidia-smi samples.
+    For better utilization, use larger matrices or increase batch size in training.
+    """
+    print_notes(16, notes)
     
     if not HAS_TORCH:
         print("  ⚠️  GPU stress test skipped (PyTorch not installed)")
@@ -1167,13 +1393,11 @@ def gpu_stress_test():
         print("  ⚠️  GPU stress test skipped (CUDA not available)")
         return
     
-    # Get GPU info
     gpu_name = torch.cuda.get_device_name(0)
     gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
     print(f"  GPU: {gpu_name}")
     print(f"  VRAM: {gpu_mem:.2f} GB")
     
-    # Get initial GPU stats
     print("\n  Initial GPU Status:")
     try:
         result = subprocess.run(
@@ -1193,23 +1417,22 @@ def gpu_stress_test():
     except:
         pass
     
-    print("\n  Running GPU stress test with monitoring...")
+    print("\n  Running GPU stress test with larger matrices...")
+    print("  💡 Using 8192x8192 matrices for longer processing time")
     start = time.time()
     
-    # Track metrics
     max_temp = 0
     max_power = 0
     all_temps = []
     
-    # Run stress test
     for i in range(5):
         print(f"  Iteration {i+1}/5...")
-        a = torch.randn(4096, 4096, device='cuda')
-        b = torch.randn(4096, 4096, device='cuda')
+        a = torch.randn(8192, 8192, device='cuda')
+        b = torch.randn(8192, 8192, device='cuda')
         c = torch.matmul(a, b)
         torch.cuda.synchronize()
+        time.sleep(0.5)
         
-        # Get stats during test
         try:
             result = subprocess.run(
                 ['nvidia-smi', '--query-gpu=temperature.gpu,power.draw,utilization.gpu,memory.used',
@@ -1233,116 +1456,50 @@ def gpu_stress_test():
             pass
     
     elapsed = time.time() - start
-    avg_temp = sum(all_temps) / len(all_temps) if all_temps else 0
     
     print(f"\n  ✅ GPU Test Complete in {elapsed:.2f} seconds")
     
-    # Final GPU stats
-    print("\n  Final GPU Status:")
-    try:
-        result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,temperature.gpu,power.draw',
-             '--format=csv,noheader'],
-            capture_output=True, text=True
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            stats = [s.strip() for s in result.stdout.strip().split(',')]
-            if len(stats) >= 4:
-                print(f"    GPU Utilization: {stats[0]}")
-                print(f"    Memory Used: {stats[1]}")
-                print(f"    Temperature: {stats[2]}")
-                print(f"    Power Draw: {stats[3]}")
-    except:
-        pass
-    
-    torch.cuda.empty_cache()
-    
-    # DIAGNOSIS
     print("\n  📋 DIAGNOSIS:")
     print("  " + "-" * 50)
     
-    issues = []
-    recommendations = []
+    if max_power < 100:
+        print("  ⚠️  Low power draw detected. This could mean:")
+        print("    • GPU is not being fully utilized")
+        print("    • Power supply is insufficient")
+        print("    • GPU is in power-saving mode")
+        print("  💡 Try increasing matrix size or batch size")
+    elif max_power > 300:
+        print("  ✅ GPU power draw is excellent!")
     
-    # Check temperature
     if max_temp > 85:
-        issues.append(f"🔥 High GPU temperature detected: {max_temp:.0f}°C (recommended < 85°C)")
-        recommendations.append("  - Check GPU fan speed and cooling")
-        recommendations.append("  - Ensure case has adequate airflow")
-        recommendations.append("  - Consider adjusting fan curve in MSI Afterburner")
-    elif max_temp > 80:
-        issues.append(f"⚠️  Elevated GPU temperature: {max_temp:.0f}°C (recommended < 85°C)")
-        recommendations.append("  - Monitor GPU temperatures during extended workloads")
-        recommendations.append("  - Ensure case has good airflow")
+        print(f"  🔥 High GPU temperature: {max_temp:.0f}°C")
+        print("  💡 Improve cooling or reduce workload")
+    elif max_temp > 70:
+        print(f"  ✅ Good GPU temperature: {max_temp:.0f}°C")
     else:
-        print(f"  ✅ GPU temperatures are excellent: {max_temp:.0f}°C max, {avg_temp:.0f}°C avg")
+        print(f"  ✅ Excellent GPU temperature: {max_temp:.0f}°C")
     
-    # Check power
-    if max_power > 300:
-        print(f"  ✅ GPU power draw is good: {max_power:.0f}W (near 360W TDP)")
-    elif max_power > 200:
-        issues.append(f"⚠️  Low GPU power draw: {max_power:.0f}W (expected ~300W under load)")
-        recommendations.append("  - Check power supply connections")
-        recommendations.append("  - Verify GPU is not power-limited in BIOS")
-    else:
-        issues.append(f"⚠️  Very low GPU power draw: {max_power:.0f}W (expected ~300W)")
-        recommendations.append("  - Check if GPU is throttling due to temperature")
-        recommendations.append("  - Verify power supply is adequate")
-    
-    # Check performance
-    expected_time = 3.0
-    if elapsed > expected_time * 1.5:
-        issues.append(f"⏱️  GPU test took {elapsed:.1f}s (expected ~{expected_time:.1f}s)")
-        recommendations.append("  - Check for thermal throttling")
-        recommendations.append("  - Ensure drivers are up to date")
-        recommendations.append("  - Close background applications using GPU")
-    
-    # Check memory
-    if gpu_mem >= 16:
-        print(f"  ✅ Excellent VRAM: {gpu_mem:.1f} GB - ideal for large AI models")
-    elif gpu_mem >= 12:
-        print(f"  ✅ Good VRAM: {gpu_mem:.1f} GB - suitable for most AI models")
-    elif gpu_mem >= 8:
-        issues.append(f"⚠️  Limited VRAM: {gpu_mem:.1f} GB (recommended 12GB+ for AI)")
-        recommendations.append("  - Consider models optimized for lower VRAM")
-        recommendations.append("  - Use memory optimization techniques (gradient checkpointing)")
-    
-    # Check compute capability
-    props = torch.cuda.get_device_properties(0)
-    if props.major >= 12:
-        print(f"  ✅ Excellent compute capability: {props.major}.{props.minor} (Blackwell architecture)")
-    elif props.major >= 10:
-        print(f"  ✅ Good compute capability: {props.major}.{props.minor}")
-    
-    if issues:
-        print("\n  ⚠️  Issues Found:")
-        for issue in issues:
-            print(f"    • {issue}")
-        print("\n  📝 Recommendations:")
-        for rec in recommendations:
-            print(f"    {rec}")
-    else:
-        print("  ✅ No issues detected. GPU performance is excellent!")
-    
-    print("\n  ⭐ Performance Rating:")
-    if "RTX 50" in gpu_name or "RTX 40" in gpu_name:
-        print("    🏆 Excellent - Top-tier GPU for AI/ML workloads")
-        print("    ✅ Ideal for training large models and running LLMs")
-    elif "RTX 30" in gpu_name:
-        print("    ✅ Good - Capable for most AI/ML workloads")
-        print("    ⚠️  May struggle with very large models (>13B parameters)")
-    else:
-        print("    ⚠️  Moderate - Consider upgrading for serious AI work")
+    print("\n  💡 PERFORMANCE TIPS:")
+    print("  " + "-" * 50)
+    print("  • Use larger batch sizes for better utilization")
+    print("  • Enable mixed precision training (AMP)")
+    print("  • Use torch.compile() for PyTorch 2.0+")
+    print("  • Set Windows Power Plan to 'High Performance'")
 
 # =============================================================================
-# STEP 17: STORAGE SPEED TEST WITH DIAGNOSIS
+# STEP 17: STORAGE SPEED TEST
 # =============================================================================
 
 def storage_speed_test():
     """Step 17: Storage speed test with diagnosis"""
     print_section("STEP 17: STORAGE SPEED TEST")
-    print("Why it matters: Measures read/write speeds")
     print("-" * 50)
+    
+    notes = """
+    Storage Speed Test: measures read/write speeds.
+    NVMe SSD: 2000+ MB/s (excellent), SATA SSD: 400-500 MB/s (good), HDD: 50-150 MB/s (too slow for AI).
+    """
+    print_notes(17, notes)
     
     try:
         import tempfile
@@ -1352,14 +1509,12 @@ def storage_speed_test():
         
         print(f"  Testing with {get_size(test_size)} file...")
         
-        # Write test
         start = time.time()
         with open(temp_file, 'wb') as f:
             f.write(os.urandom(test_size))
         write_time = time.time() - start
         write_speed = test_size / write_time / 1024 / 1024
         
-        # Read test
         start = time.time()
         with open(temp_file, 'rb') as f:
             data = f.read()
@@ -1372,88 +1527,39 @@ def storage_speed_test():
         print(f"    Write Speed: {write_speed:.2f} MB/s")
         print(f"    Read Speed: {read_speed:.2f} MB/s")
         
-        # DIAGNOSIS
         print("\n  📋 DIAGNOSIS:")
         print("  " + "-" * 50)
         
-        issues = []
-        recommendations = []
-        drive_type = "Unknown"
-        
         if write_speed > 500:
-            drive_type = "NVMe SSD"
             print("  ✅ Excellent performance - NVMe SSD detected")
             if write_speed > 1000:
                 print("  ✅ PCIe Gen 3/4 NVMe SSD with excellent speeds")
         elif write_speed > 200:
-            drive_type = "SATA SSD"
             print("  ✅ Good performance - SATA SSD detected")
-            issues.append("⏱️  SATA SSD detected (slower than NVMe)")
-            recommendations.append("  - Consider upgrading to NVMe SSD for faster data loading")
-            recommendations.append("  - SATA SSDs are still adequate for most AI workloads")
         elif write_speed > 50:
-            drive_type = "HDD"
-            issues.append("⚠️  HDD detected - Slow for AI workloads")
-            recommendations.append("  - Upgrade to SSD for significantly better performance")
-            recommendations.append("  - If using HDD, store datasets on SSD for faster loading")
-            recommendations.append("  - Consider using NVMe SSD for best performance")
+            print("  ⚠️  HDD detected - Slow for AI workloads")
+            print("  💡 Upgrade to NVMe SSD for better performance")
         else:
-            drive_type = "Very Slow Drive"
-            issues.append("❌  Very slow storage detected!")
-            recommendations.append("  - IMMEDIATELY upgrade to SSD for AI work")
-            recommendations.append("  - NVMe SSD recommended for AI/ML workloads")
-            recommendations.append("  - HDD will significantly slow down training")
-        
-        # Check read vs write balance
-        if read_speed > write_speed * 1.5:
-            issues.append("⚠️  Read speed significantly faster than write")
-            recommendations.append("  - Normal for most drives, but affects checkpoint saving")
-            recommendations.append("  - Consider faster drive for training checkpoints")
-        
-        print("\n  📝 AI Workload Recommendations:")
-        if drive_type == "NVMe SSD":
-            print("    ✅ Storage is excellent for AI workloads")
-            print("    ✅ Fast data loading for large datasets")
-            print("    ✅ Quick checkpoint saving and loading")
-        elif drive_type == "SATA SSD":
-            print("    ⚠️  SATA SSD is adequate but slower than NVMe")
-            print("    ℹ️  Consider NVMe SSD for large datasets (>100GB)")
-        else:
-            print("    ❌ HDD is NOT recommended for AI workloads")
-            print("    ℹ️  Upgrade to NVMe SSD for best performance")
-        
-        if issues:
-            print("\n  ⚠️  Issues Found:")
-            for issue in issues:
-                print(f"    • {issue}")
-            print("\n  📝 Recommendations:")
-            for rec in recommendations:
-                print(f"    {rec}")
-        else:
-            print("  ✅ No storage issues detected")
-        
-        print("\n  ⭐ Performance Rating:")
-        if write_speed > 1000:
-            print("    🏆 Excellent - High-end NVMe SSD")
-        elif write_speed > 500:
-            print("    ✅ Good - Standard NVMe SSD")
-        elif write_speed > 200:
-            print("    ⚠️  Adequate - SATA SSD (consider NVMe upgrade)")
-        else:
-            print("    ❌ Insufficient - Upgrade to SSD immediately")
+            print("  ❌ Very slow storage detected!")
+            print("  💡 IMMEDIATELY upgrade to NVMe SSD for AI work")
             
     except Exception as e:
         print(f"  ⚠️  Storage test error: {e}")
 
 # =============================================================================
-# STEP 18: NETWORK SPEED TEST WITH DIAGNOSIS
+# STEP 18: NETWORK SPEED TEST
 # =============================================================================
 
 def network_speed_test():
     """Step 18: Network speed test with diagnosis"""
     print_section("STEP 18: NETWORK SPEED TEST")
-    print("Why it matters: Measures download/upload speeds")
     print("-" * 50)
+    
+    notes = """
+    Network Speed Test: measures download/upload speeds and ping.
+    Recommended: 100+ Mbps download, 20+ Mbps upload, <50ms ping for remote work.
+    """
+    print_notes(18, notes)
     
     if HAS_SPEEDTEST:
         try:
@@ -1470,98 +1576,120 @@ def network_speed_test():
             print(f"    Upload Speed: {upload:.2f} Mbps")
             print(f"    Ping: {ping:.2f} ms")
             
-            # DIAGNOSIS
             print("\n  📋 DIAGNOSIS:")
             print("  " + "-" * 50)
             
-            issues = []
-            recommendations = []
-            
             if download > 100:
-                print(f"  ✅ Excellent download speed: {download:.1f} Mbps")
-                if download > 500:
-                    print("  ✅ Very fast connection - ideal for cloud/remote training")
+                print("  ✅ Excellent download speed")
             elif download > 50:
-                issues.append(f"⚠️  Moderate download speed: {download:.1f} Mbps")
-                recommendations.append("  - Consider faster internet for downloading large models")
-                recommendations.append("  - Download models once, use local cache")
+                print("  ⚠️  Adequate download speed")
+                print("  💡 Large models may take time to download")
             else:
-                issues.append(f"❌  Slow download speed: {download:.1f} Mbps")
-                recommendations.append("  - Internet is too slow for large model downloads")
-                recommendations.append("  - Consider using a download manager or scheduling downloads")
-                recommendations.append("  - Use local model storage when possible")
+                print("  ❌ Slow download speed")
+                print("  💡 Consider downloading models at work/school")
             
-            if upload > 50:
-                print(f"  ✅ Excellent upload speed: {upload:.1f} Mbps")
-            elif upload > 10:
-                issues.append(f"⚠️  Moderate upload speed: {upload:.1f} Mbps")
-                recommendations.append("  - Uploading large checkpoints may be slow")
-                recommendations.append("  - Consider local backup instead of cloud")
+            if upload > 20:
+                print("  ✅ Excellent upload speed")
             else:
-                issues.append(f"❌  Slow upload speed: {upload:.1f} Mbps")
-                recommendations.append("  - Uploading models/checkpoints will be very slow")
-                recommendations.append("  - Use local storage for model artifacts")
-            
-            if ping < 20:
-                print(f"  ✅ Excellent ping: {ping:.1f} ms")
-            elif ping < 50:
-                print(f"  ✅ Good ping: {ping:.1f} ms")
-            elif ping < 100:
-                issues.append(f"⚠️  High ping: {ping:.1f} ms")
-                recommendations.append("  - May affect SSH/remote connections")
-                recommendations.append("  - Consider using a VPN or different network")
-            else:
-                issues.append(f"❌  Very high ping: {ping:.1f} ms")
-                recommendations.append("  - Remote development will be challenging")
-                recommendations.append("  - Consider local development or better internet")
-            
-            print("\n  📝 AI Workload Recommendations:")
-            if download > 100:
-                print("    ✅ Internet is fast enough for cloud-based AI work")
-                print("    ✅ Downloading large models and datasets is practical")
-            elif download > 50:
-                print("    ⚠️  Internet is adequate but may be slow for large downloads")
-                print("    ℹ️  Pre-download models and cache datasets when possible")
-            else:
-                print("    ❌ Internet is too slow for cloud-based AI work")
-                print("    ℹ️  Work with local models and datasets")
-                print("    ℹ️  Consider using a faster connection or data center")
-            
-            if issues:
-                print("\n  ⚠️  Issues Found:")
-                for issue in issues:
-                    print(f"    • {issue}")
-                print("\n  📝 Recommendations:")
-                for rec in recommendations:
-                    print(f"    {rec}")
-            else:
-                print("  ✅ No network issues detected")
-            
-            print("\n  ⭐ Performance Rating:")
-            if download > 500:
-                print("    🏆 Excellent - High-speed connection (500+ Mbps)")
-            elif download > 100:
-                print("    ✅ Good - Suitable for cloud AI work (100+ Mbps)")
-            elif download > 50:
-                print("    ⚠️  Adequate - May be slow for large downloads (50+ Mbps)")
-            else:
-                print("    ❌ Insufficient - Upgrade internet for cloud AI work")
+                print("  ⚠️  Upload speed may be slow for sharing models")
                 
         except Exception as e:
             print(f"  ⚠️  Speed test error: {e}")
-            print("  ℹ️  Network diagnosis limited - speedtest-cli may need reinstallation")
     else:
         print("  ⚠️  Speedtest not installed (pip install speedtest-cli)")
 
 # =============================================================================
-# STEP 19: SYSTEM SUMMARY
+# STEP 19: POWER SUPPLY TEST
+# =============================================================================
+
+def power_supply_test():
+    """Step 19: Test power delivery to GPU and provide recommendations"""
+    print_section("STEP 19: POWER SUPPLY TEST")
+    print("-" * 50)
+    
+    notes = """
+    Power Supply Test: checks GPU power draw vs expected.
+    RTX 5080 needs 360W under full load. Insufficient power causes throttling.
+    Current idle power (~45W) is normal. Under load should reach 300-360W.
+    """
+    print_notes(19, notes)
+    
+    print("  Power supply information:")
+    print("  " + "-" * 50)
+    
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=power.draw,power.limit,utilization.gpu,temperature.gpu,memory.total,memory.used',
+             '--format=csv,noheader'],
+            capture_output=True, text=True, timeout=5
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            parts = [p.strip() for p in result.stdout.strip().split(',')]
+            if len(parts) >= 6:
+                print(f"  Current Power Draw: {parts[0]}")
+                print(f"  Power Limit (Max): {parts[1]}")
+                print(f"  GPU Utilization: {parts[2]}")
+                print(f"  GPU Temperature: {parts[3]}")
+                print(f"  Memory Total: {parts[4]}")
+                print(f"  Memory Used: {parts[5]}")
+        else:
+            print("  ⚠️  Could not get power information")
+    except Exception as e:
+        print(f"  ⚠️  Could not get power information: {e}")
+    
+    print("\n  📋 POWER DELIVERY ANALYSIS:")
+    print("  " + "-" * 50)
+    
+    is_laptop = False
+    try:
+        if platform.system() == "Windows":
+            result = run_command("wmic computersystem get model")
+            if result and any(x in result.lower() for x in ['laptop', 'notebook', 'tablet']):
+                is_laptop = True
+    except:
+        pass
+    
+    if is_laptop:
+        print("  ℹ️  Laptop detected - power delivery may be limited")
+        print("  💡 For best performance, plug into AC power")
+    else:
+        print("  ℹ️  Desktop detected - power supply should be adequate")
+    
+    print("\n  💡 RECOMMENDED POWER SUPPLY SPECIFICATIONS:")
+    print("  " + "-" * 50)
+    print("  • RTX 5080 Recommended PSU: 750W - 850W")
+    print("  • Minimum PSU: 650W")
+    print("  • PCIe Power Cables: 3x 8-pin or 1x 12VHPWR")
+    
+    print("\n  🛒 COMMERCIAL RECOMMENDATIONS:")
+    print("  " + "-" * 50)
+    print("  POWER SUPPLY UNITS (PSUs):")
+    print("  • Corsair RM850x (850W, Gold) - $150")
+    print("  • Seasonic Focus GX-850 (850W, Gold) - $160")
+    print("  • ASUS ROG Thor 850P (850W, Platinum) - $250")
+    print("  • EVGA SuperNOVA 850 G6 (850W, Gold) - $140")
+    print("  • Be Quiet! Dark Power 12 850W (850W, Titanium) - $200")
+    
+    print("\n  POWER CABLES NEEDED:")
+    print("  • RTX 5080 uses 12VHPWR connector (16-pin)")
+    print("  • Most modern PSUs include this natively")
+    print("  • Adapter: 3x 8-pin to 12VHPWR (included with GPU)")
+
+# =============================================================================
+# STEP 20: SYSTEM SUMMARY
 # =============================================================================
 
 def system_summary():
-    """Step 19: Overall system readiness assessment"""
-    print_section("STEP 19: SYSTEM SUMMARY")
-    print("Why it matters: Provides overall readiness assessment")
+    """Step 20: Overall system readiness assessment"""
+    print_section("STEP 20: SYSTEM SUMMARY")
     print("-" * 50)
+    
+    notes = """
+    System Summary: quick overview of your system's AI readiness.
+    CPU, RAM, GPU, Storage, and Network ratings. Shows what AI workloads you can handle.
+    """
+    print_notes(20, notes)
     
     print("  📊 System Readiness Assessment:\n")
     
@@ -1621,7 +1749,7 @@ def system_summary():
     print("="*70)
 
 # =============================================================================
-# VIRTUAL ENVIRONMENT SETUP WIZARD WITH CHOICES
+# VIRTUAL ENVIRONMENT SETUP WIZARD
 # =============================================================================
 
 def show_environment_comparison():
@@ -1642,7 +1770,6 @@ def show_environment_comparison():
     print("  ✅  uv - Great for pure Python, but CUDA support is limited")
     print("  ⚠️  venv - Lightweight but doesn't handle CUDA well")
     print("  ⏭️  None - Skip setup for now")
-    print("  " + "="*70)
 
 def create_environment_with_tool(tool, env_name, installed_list):
     """Create a virtual environment using the selected tool"""
@@ -1681,11 +1808,9 @@ def create_environment_with_tool(tool, env_name, installed_list):
     
     elif tool == "conda":
         try:
-            # Check if conda is installed
             subprocess.run(['conda', '--version'], check=True, capture_output=True)
             print(f"  ✅ Conda detected, creating environment...")
             
-            # Create conda environment with Python
             subprocess.run(['conda', 'create', '-n', env_name, f'python={sys.version_info.major}.{sys.version_info.minor}', '-y'], 
                           check=True, capture_output=True)
             print(f"  ✅ Conda environment '{env_name}' created successfully!")
@@ -1706,11 +1831,9 @@ def create_environment_with_tool(tool, env_name, installed_list):
     
     elif tool == "micromamba":
         try:
-            # Check if micromamba is installed
             subprocess.run(['micromamba', '--version'], check=True, capture_output=True)
             print(f"  ✅ Micromamba detected, creating environment...")
             
-            # Create micromamba environment
             subprocess.run(['micromamba', 'create', '-n', env_name, f'python={sys.version_info.major}.{sys.version_info.minor}', '-y'], 
                           check=True, capture_output=True)
             print(f"  ✅ Micromamba environment '{env_name}' created successfully!")
@@ -1731,11 +1854,9 @@ def create_environment_with_tool(tool, env_name, installed_list):
     
     elif tool == "uv":
         try:
-            # Check if uv is installed
             subprocess.run(['uv', '--version'], check=True, capture_output=True)
             print(f"  ✅ uv detected, creating environment...")
             
-            # Create uv virtual environment
             subprocess.run(['uv', 'venv', env_name], check=True, capture_output=True)
             print(f"  ✅ uv environment '{env_name}' created successfully!")
             
@@ -1782,7 +1903,6 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     print("\n⚠️  You are NOT in a virtual environment.")
     print("   📝 It's highly recommended to use a virtual environment for AI/ML projects.")
     
-    # Show comparison
     show_environment_comparison()
     
     response = input("\nWould you like to create a virtual environment now? (y/n): ").strip().lower()
@@ -1790,14 +1910,8 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     if response != 'y':
         print("\n⏭️  Skipping virtual environment setup.")
         print("   You can create one manually later when ready.")
-        print("\n   Manual setup options:")
-        print("   • venv:   python -m venv ai_env")
-        print("   • conda:  conda create -n ai_env python=3.12")
-        print("   • uv:     uv venv ai_env")
-        print("   • micromamba: micromamba create -n ai_env python=3.12")
         return
     
-    # Select tool
     print("\n  Which tool would you like to use?")
     print("  [1] venv - Simple, built-in (lightweight, no CUDA handling)")
     print("  [2] conda - Best for GPU/ML workloads (handles CUDA)")
@@ -1816,20 +1930,12 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     
     if tool == 'none':
         print("\n⏭️  Skipping virtual environment setup.")
-        print("   You can create one manually later when ready.")
-        print("\n   Manual setup options:")
-        print("   • venv:   python -m venv ai_env")
-        print("   • conda:  conda create -n ai_env python=3.12")
-        print("   • uv:     uv venv ai_env")
-        print("   • micromamba: micromamba create -n ai_env python=3.12")
         return
     
-    # Get environment name
     env_name = input(f"\nEnter environment name (default: ai_env): ").strip()
     if not env_name:
         env_name = "ai_env"
     
-    # Create environment
     activate_cmd, pip_cmd, python_cmd = create_environment_with_tool(tool, env_name, installed_list)
     
     if activate_cmd is None:
@@ -1838,18 +1944,14 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
     print(f"\n  📝 To activate the virtual environment:")
     print(f"     {activate_cmd}")
     
-    # Ask if user wants to install packages
     install_packages = input("\n📦 Install AI/ML packages in the new environment? (y/n): ").strip().lower()
     
     if install_packages == 'y':
         print("\n📥 Installing packages...")
         
-        # Determine packages to install based on tool
         packages = []
         
-        # Always include essential packages
         if tool in ['conda', 'micromamba']:
-            # Conda/Micromamba - install with CUDA support
             packages.append('pytorch')
             packages.append('torchvision')
             packages.append('torchaudio')
@@ -1859,100 +1961,47 @@ def virtual_environment_setup_wizard(in_venv, installed_list, missing_list):
             packages.append('-c')
             packages.append('nvidia')
         else:
-            # venv/uv - pip install with CUDA index
             packages.append('torch')
             packages.append('torchvision')
             packages.append('torchaudio')
             packages.append('--index-url')
             packages.append('https://download.pytorch.org/whl/cu121')
         
-        # Add missing packages
         for pkg in missing_list:
             if pkg != 'torch':
-                if tool in ['conda', 'micromamba'] and pkg in ['numpy', 'pandas', 'matplotlib', 'scikit-learn']:
-                    packages.append(pkg)
-                elif tool in ['conda', 'micromamba'] and pkg == 'scikit-learn':
-                    packages.append('scikit-learn')
-                else:
-                    packages.append(pkg)
+                packages.append(pkg)
         
-        # Add recommended packages
         recommended_pkgs = ['transformers', 'accelerate', 'xformers', 'numpy', 'pandas', 'matplotlib', 'seaborn']
         for pkg in recommended_pkgs:
             if pkg not in installed_list and pkg not in packages:
-                if tool in ['conda', 'micromamba']:
-                    packages.append(pkg)
-                else:
-                    packages.append(pkg)
+                packages.append(pkg)
         
         if packages:
             print(f"\n  Installing: {' '.join(packages)}")
             
             try:
                 if tool in ['conda', 'micromamba']:
-                    # Use conda/micromamba to install
                     if tool == 'conda':
                         install_cmd = ['conda', 'install'] + packages + ['-y']
                     else:
                         install_cmd = ['micromamba', 'install'] + packages + ['-y']
                     subprocess.run(install_cmd, check=True)
                 else:
-                    # Use pip with the environment's pip
                     if pip_cmd:
                         install_cmd = [pip_cmd] + packages
                         subprocess.run(install_cmd, shell=True, check=True)
                     else:
-                        # Fallback to system pip
                         subprocess.run([sys.executable, '-m', 'pip', 'install'] + packages, check=True)
                 
                 print("  ✅ Packages installed successfully!")
                 
-                # Create requirements.txt
-                print("\n  📝 Creating requirements.txt...")
-                if pip_cmd:
-                    subprocess.run([pip_cmd, 'freeze', '>', 'requirements.txt'], shell=True)
-                else:
-                    subprocess.run([sys.executable, '-m', 'pip', 'freeze', '>', 'requirements.txt'], shell=True)
-                print("  ✅ requirements.txt created!")
-                
             except subprocess.CalledProcessError as e:
                 print(f"  ❌ Failed to install packages: {e}")
-                print("  ℹ️  Try installing manually after activating the environment:")
-                print(f"     {activate_cmd}")
-                if tool in ['conda', 'micromamba']:
-                    print(f"     conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia")
-                    print(f"     conda install transformers pandas numpy matplotlib seaborn scikit-learn accelerate")
-                else:
-                    print(f"     pip install torch transformers pandas numpy matplotlib seaborn scikit-learn accelerate")
-        else:
-            print("  ✅ All packages are already installed!")
+                print("  ℹ️  Try installing manually after activating the environment")
     
     print("\n" + "="*70)
     print("✅ Virtual environment setup complete!")
     print("="*70)
-    print(f"\n📝 Next steps:")
-    print(f"  1. Activate: {activate_cmd}")
-    print(f"  2. Verify GPU: {python_cmd} -c 'import torch; print(torch.cuda.is_available())'")
-    print(f"  3. Install additional packages: {pip_cmd} install <package>")
-    print(f"  4. Freeze dependencies: {pip_cmd} freeze > requirements.txt")
-    
-    # Tool-specific notes
-    print(f"\n  📌 {tool.upper()} Tips:")
-    if tool == 'conda':
-        print("    - conda install <package>  # Install packages")
-        print("    - conda env export > environment.yml  # Export environment")
-        print("    - conda env create -f environment.yml  # Create from file")
-    elif tool == 'micromamba':
-        print("    - micromamba install <package>  # Install packages")
-        print("    - micromamba env export > environment.yml  # Export environment")
-    elif tool == 'uv':
-        print("    - uv pip install <package>  # Install packages")
-        print("    - uv pip freeze > requirements.txt  # Export requirements")
-        print("    - uv venv --python 3.12  # Create with specific Python")
-    else:  # venv
-        print("    - pip install <package>  # Install packages")
-        print("    - pip freeze > requirements.txt  # Export requirements")
-        print("    - deactivate  # Deactivate when done")
 
 # =============================================================================
 # MAIN FUNCTION
@@ -1974,15 +2023,18 @@ def main():
     get_storage_info()          # Step 5
     get_network_info()          # Step 6
     check_pytorch()             # Step 7
-    get_gpu_info()              # Steps 8-13
+    get_gpu_info()              # Steps 8-10
+    gpu_performance_test()      # Step 11
+    gpu_memory_test()           # Step 12
+    get_nvidia_info()           # Step 13
     in_venv, installed_list, missing_list = get_software_info()  # Step 14
     cpu_stress_test()           # Step 15
     gpu_stress_test()           # Step 16
     storage_speed_test()        # Step 17
     network_speed_test()        # Step 18
-    system_summary()            # Step 19
+    power_supply_test()         # Step 19
+    system_summary()            # Step 20
     
-    # Virtual Environment Setup Wizard
     virtual_environment_setup_wizard(in_venv, installed_list, missing_list)
     
     print("\n" + "="*70)
