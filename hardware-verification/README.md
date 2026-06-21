@@ -259,3 +259,149 @@ Here's why:
 | **You're budget-conscious and want best value** | ✅ **Ventus 3X OC PLUS.** The core AI performance — models you can run, training speed — is identical. The SUPRIM's premium is purely for cooling, not compute . |
 
 **Bottom line:** If your only concern is "can I run the same models and finish with slightly more time?" — the Ventus wins decisively. The SUPRIM's $500 premium does not unlock additional AI capabilities; it simply makes the system quieter and cooler during marathon sessions. For 99% of users, the Ventus offers superior value for money .
+
+
+Aegis ZS2 B7NUG-1012US  
+https://www.msi.com/Motherboard/PRO-B650-VC-WIFI-II  
+https://us.msi.com/Desktop/Aegis-ZS2/support?sku_id=95032#bios  
+
+Product Name: Aegis ZS2 B9NVV-1409US-BAR999X5081632GS2TX11MAB5
+Model: 9S6-BZ0171-1409
+Serial Number: MSBZ01P9A0106107
+Mother Board
+```
+$ Get-CimInstance -ClassName Win32_BaseBoard | Format-List *
+
+Status                  : OK
+Name                    : Base Board
+PoweredOn               : True
+Caption                 : Base Board
+Description             : Base Board
+InstallDate             :
+CreationClassName       : Win32_BaseBoard
+Manufacturer            : Micro-Star International Co., Ltd.
+Model                   :
+OtherIdentifyingInfo    :
+PartNumber              :
+SerialNumber            : 07E1810_P61E648609
+SKU                     :
+Tag                     : Base Board
+Version                 : 1.0
+Depth                   :
+Height                  :
+HotSwappable            : False
+Removable               : False
+Replaceable             : True
+Weight                  :
+Width                   :
+HostingBoard            : True
+RequirementsDescription :
+RequiresDaughterBoard   : False
+SlotLayout              :
+SpecialRequirements     :
+ConfigOptions           : {To be filled by O.E.M.}
+Product                 : PRO B650-VC WIFI III (MS-7E18)
+PSComputerName          :
+CimClass                : root/cimv2:Win32_BaseBoard
+CimInstanceProperties   : {Caption, Description, InstallDate, Name...}
+CimSystemProperties     : Microsoft.Management.Infrastructure.CimSystemProperties
+```
+
+BIOS 
+```
+$ Get-CimInstance -ClassName Win32_BIOS | Format-List *
+
+Status                         : OK
+Name                           : 1.H9
+Caption                        : 1.H9
+SMBIOSPresent                  : True
+Description                    : 1.H9
+InstallDate                    :
+BuildNumber                    :
+CodeSet                        :
+IdentificationCode             :
+LanguageEdition                :
+Manufacturer                   : American Megatrends International, LLC.
+OtherTargetOS                  :
+SerialNumber                   : MSBZ01P9A0106107
+SoftwareElementID              : 1.H9
+SoftwareElementState           : 3
+TargetOperatingSystem          : 0
+Version                        : ALASKA - 1072009
+PrimaryBIOS                    : True
+BiosCharacteristics            : {7, 11, 12, 15...}
+BIOSVersion                    : {ALASKA - 1072009, 1.H9, American Megatrends - 50023}
+CurrentLanguage                :
+EmbeddedControllerMajorVersion : 255
+EmbeddedControllerMinorVersion : 255
+InstallableLanguages           :
+ListOfLanguages                :
+ReleaseDate                    : 8/13/2025 8:00:00 PM
+SMBIOSBIOSVersion              : 1.H9
+SMBIOSMajorVersion             : 3
+SMBIOSMinorVersion             : 7
+SystemBiosMajorVersion         : 5
+SystemBiosMinorVersion         : 35
+PSComputerName                 :
+CimClass                       : root/cimv2:Win32_BIOS
+CimInstanceProperties          : {Caption, Description, InstallDate, Name...}
+CimSystemProperties            : Microsoft.Management.Infrastructure.CimSystemProperties
+```
+
+Wifi Adapter
+```
+$ Get-NetAdapter | Select-Object Name, InterfaceDescription, Status, NetworkInterfaceType
+
+Name     InterfaceDescription                                                           Status       NetworkInterfaceType
+----     --------------------                                                           ------       --------------------
+Ethernet Realtek PCIe GbE Family Controller                                             Disconnected
+Wi-Fi    Qualcomm FastConnect 7800 Wi-Fi 7 High Band Simultaneous (HBS) Network Adapter Up
+Wi-Fi 4  Qualcomm FastConnect 7800 Wi-Fi 7 High Band Simultaneous (HBS) Network Adapter Not Present
+Wi-Fi 3  Qualcomm FastConnect 7800 Wi-Fi 7 High Band Simultaneous (HBS) Network Adapter Disconnected
+```
+
+Current Connection Standard
+```
+$ netsh wlan show interfaces
+
+There are 2 interfaces on the system:
+
+    Name                   : Wi-Fi
+    Description            : Qualcomm FastConnect 7800 Wi-Fi 7 High Band Simultaneous (HBS) Network Adapter
+    GUID                   : c62d023f-329b-4d26-8e12-7218d4bf1060
+    Physical address       : dc:56:7b:1f:84:fd
+    Interface type         : Primary
+    State                  : connected
+    SSID                   : alextrex
+    AP BSSID               : 70:13:01:8a:d9:a3
+         Colocated APs:    : 3
+            BSSID: 72:13:01:83:d9:a4,  Band: 5 GHz,  Channel: 44
+            BSSID: 72:13:01:83:d9:a2,  Band: 5 GHz,  Channel: 44
+            BSSID: 72:13:01:83:d9:a6,  Band: 5 GHz,  Channel: 44
+    Band                   : 6 GHz
+    Channel                : 197
+    Connected Akm-cipher   : [ akm = 00-0f-ac:08, cipher =  00-0f-ac:04 ]
+    Network type           : Infrastructure
+    Radio type             : 802.11ax
+    Authentication         : WPA3-Personal  (H2E)
+    Cipher                 : CCMP
+    Connection mode        : Auto Connect
+    Receive rate (Mbps)    : 2401.9
+    Transmit rate (Mbps)   : 2401.9
+    Signal                 : 100%
+    Rssi                   : -43
+    Profile                : alextrex
+    QoS MSCS Configured         : 0
+    QoS Map Configured          : 0
+    QoS Map Allowed by Policy   : 0
+
+    Name                   : Wi-Fi 3
+    Description            : Qualcomm FastConnect 7800 Wi-Fi 7 High Band Simultaneous (HBS) Network Adapter #3
+    GUID                   : 4cc5eb0f-c926-4910-a135-57a0707d49ef
+    Physical address       : fe:56:7b:1f:84:fd
+    Interface type         : Secondary
+    Primary interface      : Wi-Fi
+    State                  : disconnected
+    Radio status           : Hardware On
+                             Software On
+```
