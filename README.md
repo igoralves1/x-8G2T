@@ -16,24 +16,25 @@
 ## 📋 Table of Contents
 
 1. [What Is This Project?](#1-what-is-this-project)
-2. [The Two Environments](#2-the-two-environments)
-3. [Architecture Overview](#3-architecture-overview)
-4. [System Components in Detail](#4-system-components-in-detail)
-5. [The Agentic AI Subsystem](#5-the-agentic-ai-subsystem)
-6. [The RAG Subsystem — Where the Book Knowledge Lives](#6-the-rag-subsystem--where-the-book-knowledge-lives)
-7. [Model Context Protocol (MCP) Explained](#7-model-context-protocol-mcp-explained)
-8. [The SPC / Six Sigma Specialist](#8-the-spc--six-sigma-specialist)
-9. [Where Every Piece of Data Is Stored](#9-where-every-piece-of-data-is-stored)
-10. [End-to-End Data Flow](#10-end-to-end-data-flow)
-11. [Getting Started on the Jetson](#11-getting-started-on-the-jetson)
-12. [Services & Ports Reference](#12-services--ports-reference)
-13. [AI Models](#13-ai-models)
-14. [API Reference](#14-api-reference)
-15. [Configuration (.env)](#15-configuration-env)
-16. [Security](#16-security)
-17. [Troubleshooting](#17-troubleshooting)
-18. [Repository Layout](#18-repository-layout)
-19. [Contributing & License](#19-contributing--license)
+2. [Hardware Specifications](#2-hardware-specifications)
+3. [The Two Environments](#3-the-two-environments)
+4. [Architecture Overview](#4-architecture-overview)
+5. [System Components in Detail](#5-system-components-in-detail)
+6. [The Agentic AI Subsystem](#6-the-agentic-ai-subsystem)
+7. [The RAG Subsystem — Where the Book Knowledge Lives](#7-the-rag-subsystem--where-the-book-knowledge-lives)
+8. [Model Context Protocol (MCP) Explained](#8-model-context-protocol-mcp-explained)
+9. [The SPC / Six Sigma Specialist](#9-the-spc--six-sigma-specialist)
+10. [Where Every Piece of Data Is Stored](#10-where-every-piece-of-data-is-stored)
+11. [End-to-End Data Flow](#11-end-to-end-data-flow)
+12. [Getting Started on the Jetson](#12-getting-started-on-the-jetson)
+13. [Services & Ports Reference](#13-services--ports-reference)
+14. [AI Models](#14-ai-models)
+15. [API Reference](#15-api-reference)
+16. [Configuration (.env)](#16-configuration-env)
+17. [Security](#17-security)
+18. [Troubleshooting](#18-troubleshooting)
+19. [Repository Layout](#19-repository-layout)
+20. [Contributing & License](#20-contributing--license)
 
 ---
 
@@ -76,7 +77,26 @@ What makes it more than a classic IoT pipeline:
 
 ---
 
-## 2. The Two Environments
+## 2. Hardware Specifications
+
+This platform is specifically optimized for the **NVIDIA Jetson Orin Nano Developer Kit**:
+
+| Component | Specification |
+|-----------|---------------|
+| **Module** | NVIDIA Jetson Orin Nano 8GB |
+| **GPU** | 1024-core NVIDIA Ampere architecture GPU with 32 Tensor Cores |
+| **CPU** | 6-core Arm® Cortex-A78AE v8.2 64-bit |
+| **Memory** | 8GB 128-bit LPDDR5 |
+| **Storage** | 2TB NVMe SSD (M.2 Key M) |
+| **Networking** | Gigabit Ethernet, 802.11ac WLAN, Bluetooth 5.0 |
+| **I/O** | 4x USB 3.2 Gen2 Type A, DisplayPort, USB Type-C |
+| **Expansion** | 40-pin GPIO header, 2x MIPI CSI-2 camera connectors, M.2 Key M/E |
+
+> **Note**: While optimized for the Orin Nano, this platform can run on any ARM64 or x86_64 system with Docker support.
+
+---
+
+## 3. The Two Environments
 
 The whole system has **exactly two environments**. Keep this model in mind:
 
@@ -92,7 +112,7 @@ lets you act as Environment 1 from any machine.
 
 ---
 
-## 3. Architecture Overview
+## 4. Architecture Overview
 
 ```mermaid
 flowchart TB
@@ -216,7 +236,7 @@ flowchart TB
 
 ---
 
-## 4. System Components in Detail
+## 5. System Components in Detail
 
 Each container has one job. Here is what every part does, how it works, and what
 it persists.
@@ -295,7 +315,7 @@ it persists.
   SPC MCP over HTTP — so it stays light and restartable.
 - **Code:** [`services/agent-orchestrator/app/`](services/agent-orchestrator/app)
   (`core/`, `rag/`, `tools/`, `agents/`). Port 8000, docs at `/docs`.
-- **Details:** [§5](#5-the-agentic-ai-subsystem).
+- **Details:** [§6](#6-the-agentic-ai-subsystem).
 
 ### 4.10 spc-mcp — the local SPC / Six Sigma MCP server
 - **Role:** a standalone **Model Context Protocol server** exposing deterministic
@@ -305,15 +325,15 @@ it persists.
   [`spc_core.py`](services/spc-mcp/spc_core.py), renderer
   [`charts.py`](services/spc-mcp/charts.py), server
   [`server.py`](services/spc-mcp/server.py). Port 8765 (streamable HTTP at `/mcp`).
-- **Details:** [§7](#7-model-context-protocol-mcp-explained) and
-  [§8](#8-the-spc--six-sigma-specialist).
+- **Details:** [§8](#8-model-context-protocol-mcp-explained) and
+  [§9](#9-the-spc--six-sigma-specialist).
 
 ### 4.11 rag-indexer — knowledge ingestion job
 - **Role:** a one-shot/recurring job that reads the knowledge base and the SPC
   **PDF books**, chunks them, embeds them on the GPU, and upserts the vectors into
   Qdrant; it records bookkeeping in PostgreSQL so re-runs are idempotent.
 - **Code:** [`services/rag-indexer/indexer.py`](services/rag-indexer/indexer.py).
-- **Details:** [§6](#6-the-rag-subsystem--where-the-book-knowledge-lives).
+- **Details:** [§7](#7-the-rag-subsystem--where-the-book-knowledge-lives).
 
 ### 4.12 Grafana — operational dashboards
 - **Role:** real-time operational views (telemetry, alarms, agent runs). Ships a
@@ -326,7 +346,7 @@ it persists.
 
 ---
 
-## 5. The Agentic AI Subsystem
+## 6. The Agentic AI Subsystem
 
 The "brain" is the [`agent-orchestrator`](services/agent-orchestrator). It
 implements a lightweight, dependency-free **ReAct loop** (no LangChain) so it runs
@@ -348,7 +368,7 @@ reliably on ARM/Jetson.
 Tools live in [`app/tools/registry.py`](services/agent-orchestrator/app/tools/registry.py):
 `rag_search`, `get_device`, `get_recent_alarms`, `query_telemetry`,
 `detect_anomaly`, `create_alarm`, `recall_memory`, `save_memory` — plus the SPC
-tools (bridged from MCP, [§7](#7-model-context-protocol-mcp-explained)) and the
+tools (bridged from MCP, [§8](#8-model-context-protocol-mcp-explained)) and the
 `ask_*` delegation tools the supervisor uses.
 
 ### How a run works (ReAct)
@@ -369,7 +389,7 @@ are recorded in `agent_runs`.
 
 ---
 
-## 6. The RAG Subsystem — Where the Book Knowledge Lives
+## 7. The RAG Subsystem — Where the Book Knowledge Lives
 
 This section answers the question directly: **the information extracted from the
 statistics books is stored as vector embeddings in Qdrant, with the original text
@@ -429,7 +449,7 @@ Distinct from the books: when an agent discovers a reusable insight it calls
 
 ---
 
-## 7. Model Context Protocol (MCP) Explained
+## 8. Model Context Protocol (MCP) Explained
 
 ### What MCP is
 The **Model Context Protocol** is an open standard for connecting AI applications
@@ -501,7 +521,7 @@ sequenceDiagram
 
 ---
 
-## 8. The SPC / Six Sigma Specialist
+## 9. The SPC / Six Sigma Specialist
 
 This is the "fine-tuned" process-control expert. Specialization comes from three
 layers working together:
@@ -515,7 +535,7 @@ layers working together:
    prompted as a *Master Black Belt* with an explicit procedure: chart selection
    → stability (common vs special cause; avoid over-control) → capability →
    grounded corrective actions.
-3. **Deterministic tools via the local MCP** (see [§7](#7-model-context-protocol-mcp-explained)).
+3. **Deterministic tools via the local MCP** (see [§8](#8-model-context-protocol-mcp-explained)).
 
 ### Real-time analysis → chart
 
@@ -534,7 +554,7 @@ make spc-test          # docker compose run --rm --entrypoint python spc-mcp tes
 
 ---
 
-## 9. Where Every Piece of Data Is Stored
+## 10. Where Every Piece of Data Is Stored
 
 | Data | Service | Docker volume | Notes |
 |------|---------|---------------|-------|
@@ -551,7 +571,7 @@ make spc-test          # docker compose run --rm --entrypoint python spc-mcp tes
 
 ---
 
-## 10. End-to-End Data Flow
+## 11. End-to-End Data Flow
 
 1. **Device → EMQX** — a device publishes JSON to `telemetry/<external_id>` over
    MQTT/TLS.
@@ -577,7 +597,7 @@ docker compose exec flink-jobmanager \
 
 ---
 
-## 11. Getting Started on the Jetson
+## 12. Getting Started on the Jetson
 
 > You will clone this repo onto a real Jetson Orin Nano and run the full system.
 > These are the exact steps.
@@ -661,7 +681,7 @@ curl -s -X POST localhost:8000/spc/analyze \
 
 ---
 
-## 12. Services & Ports Reference
+## 13. Services & Ports Reference
 
 | Service | Image / build | Host port | GPU | Role |
 |---------|---------------|-----------|-----|------|
@@ -687,7 +707,7 @@ curl -s -X POST localhost:8000/spc/analyze \
 
 ---
 
-## 13. AI Models
+## 14. AI Models
 
 All models are **open / ungated GGUF** builds, pulled by
 [`scripts/download-models.sh`](scripts/download-models.sh) (`make models`) into
@@ -704,7 +724,7 @@ the `agent_memory` vector column) and re-index.
 
 ---
 
-## 14. API Reference
+## 15. API Reference
 
 Base URL: `http://<jetson-ip>:8000` · Auth: `Authorization: Bearer $AI_API_KEY`
 (disabled automatically if `AI_API_KEY` is empty) · Interactive docs: `/docs`.
@@ -746,7 +766,7 @@ base64-encoded control-chart image, and the SPC agent's grounded interpretation.
 
 ---
 
-## 15. Configuration (.env)
+## 16. Configuration (.env)
 
 Copy [`.env.example`](.env.example) to `.env` (done by `make bootstrap`) and set
 secrets. Key groups:
@@ -763,7 +783,7 @@ Generate strong secrets with `openssl rand -base64 32`. `.env` is git-ignored.
 
 ---
 
-## 16. Security
+## 17. Security
 
 - **Transport:** MQTT over **TLS 1.2/1.3** on 8883 with X.509 certs
   ([`ssl/generate-certs.sh`](ssl/generate-certs.sh)); mutual TLS (`verify_peer`).
@@ -780,7 +800,7 @@ Generate strong secrets with `openssl rand -base64 32`. `.env` is git-ignored.
 
 ---
 
-## 17. Troubleshooting
+## 18. Troubleshooting
 
 **GPU not visible in containers**
 ```bash
@@ -823,7 +843,7 @@ docker compose exec flink-jobmanager flink run -py /opt/flink/usrlib/telemetry_p
 
 ---
 
-## 18. Repository Layout
+## 19. Repository Layout
 
 ```
 x-8G2T/
@@ -861,7 +881,7 @@ x-8G2T/
 
 ---
 
-## 19. Contributing & License
+## 20. Contributing & License
 
 Contributions welcome: keep everything containerized, use `.env` for all secrets,
 add health checks + logging for new services, and document new API endpoints and

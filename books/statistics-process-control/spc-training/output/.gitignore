@@ -1,0 +1,32 @@
+# ── output/ gitignore ──────────────────────────────────────────────────────────
+# Controls what gets committed to git from the training output directory.
+# The goal: commit the small adapter (~80MB), ignore the large files (GBs).
+
+# ── IGNORE: Large files (too big for git) ──────────────────────────────────────
+
+# Full merged model (2+ GB — DO NOT commit)
+*.gguf
+!adapter/spc-adapter-lora.gguf
+
+# Training checkpoints (GBs of intermediate state — not needed on Jetson)
+checkpoints/
+
+# HuggingFace model cache (downloaded during training, GBs)
+.cache/
+
+# Temporary files
+*.tmp
+*.log
+*.pid
+
+# ── KEEP: Small files that must be committed ───────────────────────────────────
+
+# The training dataset (small text file, useful for reproducibility)
+!spc-qa-pairs.jsonl
+
+# The LoRA adapter in GGUF format (this is what the Jetson loads)
+!adapter/spc-adapter-lora.gguf
+
+# The safetensors adapter (backup, for re-exporting to different GGUF types later)
+# These are small (~30-80MB each). Comment out if they exceed GitHub's 100MB limit.
+!adapter/safetensors/

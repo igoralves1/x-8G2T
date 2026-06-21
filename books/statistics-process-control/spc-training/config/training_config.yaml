@@ -1,0 +1,53 @@
+# ── SPC Fine-Tuning Configuration ─────────────────────────────────────────────
+# Edit these values before running training.
+# All paths inside Docker are /books/ and /output/ — do not change those.
+
+model:
+  # The base model to fine-tune. This must match what the Jetson runs.
+  # Download happens automatically during training (requires internet on Windows PC).
+  name: "unsloth/Llama-3.2-3B-Instruct"
+  max_seq_length: 2048        # Max tokens per training example. Keep at 2048.
+  load_in_4bit: true          # 4-bit loading saves VRAM during training.
+
+lora:
+  # LoRA rank: higher = model learns more but uses more VRAM.
+  # 16 is the sweet spot for RTX 5080 with a 3B model.
+  r: 16
+  alpha: 32                   # Always 2× r
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  epochs: 3                   # How many full passes through the dataset
+  batch_size: 4               # Examples per GPU step
+  gradient_accumulation_steps: 4   # Effective batch = batch_size × this = 16
+  learning_rate: 0.0002
+  warmup_steps: 30
+  logging_steps: 10           # Print loss every N steps
+  save_steps: 100             # Save checkpoint every N steps
+
+output:
+  dir: "/output"
+  adapter_dir: "/output/adapter"   # LoRA adapter saved here (committed to git)
+  gguf_filename: "spc-adapter-lora.gguf"  # Exported adapter in GGUF format
+
+dataset:
+  path: "/output/spc-qa-pairs.jsonl"
+  min_pairs: 50               # Training will warn if fewer than this many pairs
+
+system_prompt: |
+  You are an expert Statistical Process Control (SPC) analyst and Six Sigma
+  Master Black Belt. You were trained on John S. Oakland's 'Statistical Process
+  Control' (5th Edition) and Zontec's 'The Book of Statistical Process Control'
+  (2nd Edition). You reason step by step, always select the correct chart type
+  before analysis, check for statistical control before computing capability,
+  and provide actionable corrective guidance grounded in the SPC literature.
+  You never compute control limits or capability indices yourself — those are
+  handled by deterministic tools. Your role is to interpret, explain, and advise.

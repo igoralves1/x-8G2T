@@ -226,3 +226,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# sm-dashboard-client — independent repo (https://github.com/igoralves1/sm-dashboard-client)
+sm-dashboard-client/
