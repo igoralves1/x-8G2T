@@ -1,0 +1,116 @@
+{
+  "started_at": "2026-06-22T16:47:10.073952Z",
+  "updated_at": "2026-06-22T17:22:25.707702Z",
+  "current_step": "complete",
+  "current_status": "done",
+  "steps": [
+    {
+      "id": "preflight",
+      "label": "Pre-flight",
+      "icon": "shield-check",
+      "description": "Docker + GPU verified",
+      "explanation": "Checks that Docker Desktop is running, the NVIDIA Container Toolkit is installed, and your RTX 5080 is accessible inside containers via GPU passthrough. Without this, no training can begin.",
+      "status": "done",
+      "detail": "",
+      "error": "",
+      "started_at": "",
+      "completed_at": ""
+    },
+    {
+      "id": "metrics_server",
+      "label": "Metrics Server",
+      "icon": "activity",
+      "description": "Live monitoring on port 8765",
+      "explanation": "Starts a FastAPI server on your Windows machine that reads metrics.json written by the training container and serves them to this dashboard in real time via REST polling and Server-Sent Events (SSE).",
+      "status": "done",
+      "detail": "http://localhost:8765",
+      "error": "",
+      "started_at": "2026-06-22T16:47:10.073940Z",
+      "completed_at": "2026-06-22T16:47:13.133640Z"
+    },
+    {
+      "id": "docker_build",
+      "label": "Docker Build",
+      "icon": "box",
+      "description": "Build CUDA 12.8 + Miniforge + PyTorch 2.7 image",
+      "explanation": "Builds the training Docker image: Ubuntu 22.04, CUDA 12.8 toolkit, Miniforge (conda), Python 3.11, PyTorch 2.7+cu128, Unsloth (fast LoRA), and the full HuggingFace training stack. First run: 10\u201320 min. Subsequent runs use Docker layer cache (~30s).",
+      "status": "done",
+      "detail": "Image ready \u2014 starting container",
+      "error": "",
+      "started_at": "2026-06-22T16:47:13.218765Z",
+      "completed_at": "2026-06-22T16:56:38.065808Z"
+    },
+    {
+      "id": "extract",
+      "label": "PDF Extraction",
+      "icon": "file-text",
+      "description": "Parse SPC textbooks \u2192 JSONL dataset",
+      "explanation": "Parses 2 SPC textbooks (Statistical Process Control + The Book of SPC) using PyMuPDF and pdfminer, then generates question-answer pairs formatted for instruction fine-tuning. Output: /output/spc-qa-pairs.jsonl.",
+      "status": "done",
+      "detail": "Starting container...",
+      "error": "",
+      "started_at": "2026-06-22T16:56:38.075587Z",
+      "completed_at": null
+    },
+    {
+      "id": "llm_download",
+      "label": "LLM Download",
+      "icon": "download",
+      "description": "Download Llama-3.2-3B from HuggingFace (~6 GB)",
+      "explanation": "Downloads the Llama-3.2-3B base model from HuggingFace Hub (~6 GB). This only happens on the first run \u2014 subsequent runs load from the spc_training_hf_cache Docker volume. Unsloth loads it in 4-bit quantization to fit in 17 GB VRAM.",
+      "status": "done",
+      "detail": "Downloading unsloth/Llama-3.2-3B-Instruct (~6 GB, cached after first run)...",
+      "error": "",
+      "started_at": "2026-06-22T16:56:54.017911Z",
+      "completed_at": null
+    },
+    {
+      "id": "lora_apply",
+      "label": "Apply LoRA",
+      "icon": "layers",
+      "description": "Inject LoRA adapter layers into the model",
+      "explanation": "Applies LoRA (Low-Rank Adaptation) to the attention layers of Llama-3.2-3B. This adds ~4M trainable parameters on top of the frozen 3B base \u2014 only these adapter weights will be updated during training, keeping memory usage low and training fast.",
+      "status": "done",
+      "detail": "LoRA layers injected",
+      "error": "",
+      "started_at": "2026-06-22T16:57:06.915936Z",
+      "completed_at": "2026-06-22T16:57:10.244184Z"
+    },
+    {
+      "id": "training",
+      "label": "LoRA Training",
+      "icon": "cpu",
+      "description": "Fine-tune on RTX 5080 (17 GB VRAM)",
+      "explanation": "Fine-tunes the model using SFTTrainer (Supervised Fine-Tuning). The RTX 5080's 17 GB VRAM handles the 4-bit base model + LoRA adapters with gradient checkpointing. Watch the Loss curve drop \u2014 lower is better. Training completes in ~20\u201360 minutes depending on dataset size.",
+      "status": "done",
+      "detail": "Epoch 0/6 \u00b7 Step 0/402",
+      "error": "",
+      "started_at": "2026-06-22T16:57:15.141961Z",
+      "completed_at": null
+    },
+    {
+      "id": "export_gguf",
+      "label": "GGUF Export",
+      "icon": "package",
+      "description": "Export adapter \u2192 spc-adapter-lora.gguf",
+      "explanation": "Exports the LoRA adapter (not the full model) to GGUF format. The resulting spc-adapter-lora.gguf file (~50\u201380 MB) is committable to git and loadable on the Jetson Orin Nano alongside the base model using llama-server.",
+      "status": "done",
+      "detail": "Exporting LoRA adapter to GGUF...",
+      "error": "",
+      "started_at": "2026-06-22T17:13:03.667727Z",
+      "completed_at": null
+    },
+    {
+      "id": "complete",
+      "label": "Ready for Jetson",
+      "icon": "check-circle",
+      "description": "Adapter ready \u2014 commit and deploy",
+      "explanation": "The SPC specialist adapter is ready. Commit it to git and pull on the Jetson Orin Nano 8GB. The spc_agent will load it via llama-server as a LoRA adapter on top of the base Llama-3.2-3B model.",
+      "status": "done",
+      "detail": "spc-model-q4km.gguf ready",
+      "error": "",
+      "started_at": "2026-06-22T17:22:12.798736Z",
+      "completed_at": "2026-06-22T17:22:25.707688Z"
+    }
+  ]
+}
