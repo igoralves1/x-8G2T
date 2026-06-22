@@ -2,20 +2,17 @@ version: "3.9"
 
 # ── SPC Training Docker Compose ───────────────────────────────────────────────
 #
-# USAGE (run these commands from inside the spc-training/ folder on Windows):
+# PREFERRED — single command from Windows, does everything:
 #
-#   Step 1 — Build the container (once):
-#     docker compose -f docker-compose.train.yml build
+#   python run_training.py
 #
-#   Step 2 — Extract dataset from the PDF books:
-#     docker compose -f docker-compose.train.yml run --rm extract
+# MANUAL steps (if you prefer fine-grained control):
 #
-#   Step 3 — Train the model (uses RTX 5080 GPU):
-#     docker compose -f docker-compose.train.yml run --rm train
+#   docker compose -f docker-compose.train.yml build
+#   docker compose -f docker-compose.train.yml run --rm extract
+#   docker compose -f docker-compose.train.yml run --rm train
 #
-#   Step 4 — Check output:
-#     ls output/adapter/
-#     # You should see: spc-adapter-lora.gguf  (this is what goes to Jetson)
+# OUTPUT: output/adapter/spc-adapter-lora.gguf  (commit this to git)
 
 x-gpu-config: &gpu-config
   deploy:
@@ -26,74 +23,56 @@ x-gpu-config: &gpu-config
             count: all
             capabilities: [gpu]
 
-x-volumes: &common-volumes
-  volumes:
-    # Read-only: the PDF books are one level up from spc-training/
-    - ../:/books:ro
-    # Read-write: training output (dataset, adapter, checkpoints)
-    - ./output:/output
+x-common-env: &common-env
+  environment:
+    - PYTHONUNBUFFERED=1
+    - IN_DOCKER=1
+    - CONDA_DEFAULT_ENV=spc-train
+    - CUDA_VISIBLE_DEVICES=0
+    # Uncomment and set your HuggingFace token if you hit rate limits:
+    # - HUGGING_FACE_HUB_TOKEN=hf_your_token_here
 
 services:
 
-  # ── Service 1: Extract training dataset from PDFs ──────────────────────────
-  # This reads the PDF books and generates spc-qa-pairs.jsonl
-  # No GPU needed — runs on CPU only
+  # ── extract: Generate JSONL dataset from PDFs (CPU only) ──────────────────
   extract:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python scripts/1_extract_dataset.py
+    command: python /workspace/scripts/1_extract_dataset.py
     volumes:
       - ../:/books:ro
       - ./output:/output
-    environment:
-      - PYTHONUNBUFFERED=1
+    <<: *common-env
 
-  # ── Service 2: Fine-tune the model (GPU required) ──────────────────────────
-  # Reads output/spc-qa-pairs.jsonl and trains Llama-3.2-3B with LoRA
-  # Saves the trained adapter to output/adapter/spc-adapter-lora.gguf
+  # ── train: LoRA fine-tune Llama-3.2-3B (GPU required) ────────────────────
   train:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python scripts/2_train.py
-    <<: *gpu-config
+    command: python /workspace/scripts/2_train.py
     volumes:
       - ./output:/output
       - ./config:/workspace/config
-      # HuggingFace cache so the base model is only downloaded once
-      - huggingface_cache:/root/.cache/huggingface
-    environment:
-      - PYTHONUNBUFFERED=1
-      - CUDA_VISIBLE_DEVICES=0
-      # Set your HuggingFace token if needed for model access
-      # - HUGGING_FACE_HUB_TOKEN=hf_your_token_here
+      - ./scripts:/workspace/scripts
+      - hf_cache:/root/.cache/huggingface
+    <<: [*gpu-config, *common-env]
 
-  # ── Service 3: Run both extract and train in sequence ─────────────────────
-  # Convenience: runs everything in one command
-  # docker compose -f docker-compose.train.yml run --rm all
+  # ── all: Full pipeline — extract then train (used by run_training.py) ─────
   all:
     build:
       context: .
       dockerfile: Dockerfile
-    command: >
-      bash -c "
-        echo '=== Step 1/2: Extracting dataset from PDFs ===' &&
-        python scripts/1_extract_dataset.py &&
-        echo '=== Step 2/2: Training model ===' &&
-        python scripts/2_train.py
-      "
-    <<: *gpu-config
+    command: python /workspace/run_training.py
     volumes:
       - ../:/books:ro
       - ./output:/output
       - ./config:/workspace/config
-      - huggingface_cache:/root/.cache/huggingface
-    environment:
-      - PYTHONUNBUFFERED=1
-      - CUDA_VISIBLE_DEVICES=0
+      - ./scripts:/workspace/scripts
+      - hf_cache:/root/.cache/huggingface
+    <<: [*gpu-config, *common-env]
 
 volumes:
-  # Persists the downloaded base model (~6GB) so it is not re-downloaded each run
-  huggingface_cache:
+  # Persists the downloaded base model (~6 GB) across runs — saves re-download time
+  hf_cache:
     name: spc_training_hf_cache

@@ -27,6 +27,13 @@ from pathlib import Path
 import yaml
 import torch
 
+# Unsloth MUST be imported before transformers/peft to apply all optimizations
+from unsloth import FastLanguageModel, is_bfloat16_supported
+
+# Live metrics emitter — writes /output/metrics.json every 5 seconds
+sys.path.insert(0, str(Path(__file__).parent))
+from training_monitor import MetricsCallback
+
 # ── Load configuration ─────────────────────────────────────────────────────────
 CONFIG_PATH = Path("/workspace/config/training_config.yaml")
 if not CONFIG_PATH.exists():
@@ -78,7 +85,10 @@ print(f"CUDA version: {torch.version.cuda}")
 print(f"\nLoading base model: {MODEL_NAME}")
 print("(This will download ~6GB on first run — subsequent runs use cache)\n")
 
-from unsloth import FastLanguageModel, is_bfloat16_supported
+from pipeline_writer import write_step as _pipeline_step
+_PIPELINE_FILE = Path("/output/pipeline.json")
+_pipeline_step(_PIPELINE_FILE, "llm_download", "running",
+               f"Downloading {MODEL_NAME} (~6 GB, cached after first run)...")
 
 model, tokenizer = FastLanguageModel.from_pretrained(
     model_name=MODEL_NAME,
@@ -88,6 +98,8 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 )
 
 # ── Apply LoRA ────────────────────────────────────────────────────────────────
+_pipeline_step(_PIPELINE_FILE, "lora_apply", "running",
+               f"{MODEL_NAME} loaded — injecting LoRA adapter layers...")
 print("Applying LoRA adapters...")
 
 model = FastLanguageModel.get_peft_model(
@@ -101,6 +113,7 @@ model = FastLanguageModel.get_peft_model(
     random_state=42,
 )
 
+_pipeline_step(_PIPELINE_FILE, "lora_apply", "done", "LoRA layers injected")
 # Print trainable parameter count
 trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
 total     = sum(p.numel() for p in model.parameters())
@@ -148,6 +161,11 @@ print(f"  Batch size: {cfg['training']['batch_size']} × {cfg['training']['gradi
 print(f"  LR:         {cfg['training']['learning_rate']}")
 print()
 
+metrics_cb = MetricsCallback(
+    output_dir=str(OUTPUT_DIR),
+    dataset_pairs=len(formatted_texts),
+)
+
 trainer = SFTTrainer(
     model=model,
     tokenizer=tokenizer,
@@ -156,6 +174,7 @@ trainer = SFTTrainer(
     max_seq_length=MAX_SEQ_LEN,
     dataset_num_proc=2,
     packing=False,
+    callbacks=[metrics_cb],
     args=TrainingArguments(
         per_device_train_batch_size=cfg["training"]["batch_size"],
         gradient_accumulation_steps=cfg["training"]["gradient_accumulation_steps"],
@@ -170,13 +189,16 @@ trainer = SFTTrainer(
         lr_scheduler_type="cosine",
         seed=42,
         output_dir=str(OUTPUT_DIR / "checkpoints"),
-        save_steps=cfg["training"]["save_steps"],
-        save_total_limit=2,       # Keep only the last 2 checkpoints to save disk
+        save_strategy="no",      # Disable checkpointing — avoids TRL SFTConfig pickle bug
         report_to="none",         # Disable wandb/tensorboard
     ),
 )
 
-trainer_stats = trainer.train()
+try:
+    trainer_stats = trainer.train()
+except Exception as e:
+    _pipeline_step(_PIPELINE_FILE, "training", "error", str(e)[:120])
+    raise
 
 # Print training summary
 print(f"\nTraining complete!")
@@ -192,9 +214,9 @@ model.save_pretrained(str(SAFETENSORS_DIR))
 tokenizer.save_pretrained(str(SAFETENSORS_DIR))
 print("  Saved.")
 
-# ── Export adapter in GGUF-LoRA format (for direct use on Jetson) ────────────
-# This exports ONLY the LoRA adapter as a GGUF file (~50-80MB)
-# The Jetson llama-server loads both: base model + this adapter file
+# ── Export merged model in GGUF format (for direct use on Jetson) ────────────
+# Unsloth merges LoRA weights into the base model, then quantizes to q4_k_m (~1.8GB)
+# The Jetson llama-server loads this single self-contained GGUF file
 GGUF_PATH = str(ADAPTER_DIR / GGUF_FILENAME)
 print(f"\nExporting GGUF LoRA adapter to {GGUF_PATH}...")
 print("(This is the file that will be committed to git and pulled on the Jetson)")
@@ -202,22 +224,29 @@ print("(This is the file that will be committed to git and pulled on the Jetson)
 model.save_pretrained_gguf(
     str(ADAPTER_DIR),
     tokenizer,
-    quantization_method="lora",   # Exports ONLY the adapter, not the full merged model
+    quantization_method="q4_k_m",  # Merged model + 4-bit quantization — good balance for Jetson
 )
 
-# Rename Unsloth's default output filename to our configured name
-import glob
-gguf_files = glob.glob(str(ADAPTER_DIR / "*.gguf"))
+# Unsloth saves GGUF to <output_dir>_gguf/ — search both locations
+GGUF_SEARCH_DIRS = [ADAPTER_DIR, Path(str(ADAPTER_DIR) + "_gguf")]
+gguf_files = []
+for _d in GGUF_SEARCH_DIRS:
+    gguf_files = list(_d.glob("*.gguf"))
+    if gguf_files:
+        break
 if gguf_files:
     import shutil
     final_path = str(ADAPTER_DIR / GGUF_FILENAME)
     if gguf_files[0] != final_path:
         shutil.move(gguf_files[0], final_path)
-    print(f"  GGUF adapter saved: {final_path}")
     size_mb = Path(final_path).stat().st_size / (1024**2)
+    print(f"  GGUF adapter saved: {final_path}")
     print(f"  File size: {size_mb:.1f} MB")
+    _pipeline_step(_PIPELINE_FILE, "complete", "done",
+                   f"{GGUF_FILENAME} · {size_mb:.1f} MB · ready to commit")
 else:
     print("  WARNING: GGUF export may have failed. Check output/adapter/ for files.")
+    _pipeline_step(_PIPELINE_FILE, "export_gguf", "error", "GGUF file not found")
 
 # ── Final instructions ────────────────────────────────────────────────────────
 print(f"""

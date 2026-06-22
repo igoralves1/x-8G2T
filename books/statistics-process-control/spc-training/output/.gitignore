@@ -4,9 +4,9 @@
 
 # ── IGNORE: Large files (too big for git) ──────────────────────────────────────
 
-# Full merged model (2+ GB — DO NOT commit)
+# Full merged model — use Git LFS for the GGUF (tracked via .gitattributes)
 *.gguf
-!adapter/spc-adapter-lora.gguf
+!adapter_gguf/llama-3.2-3b-instruct.Q4_K_M.gguf
 
 # Training checkpoints (GBs of intermediate state — not needed on Jetson)
 checkpoints/
@@ -24,8 +24,8 @@ checkpoints/
 # The training dataset (small text file, useful for reproducibility)
 !spc-qa-pairs.jsonl
 
-# The LoRA adapter in GGUF format (this is what the Jetson loads)
-!adapter/spc-adapter-lora.gguf
+# The merged+quantized GGUF model (tracked via Git LFS)
+!adapter_gguf/llama-3.2-3b-instruct.Q4_K_M.gguf
 
 # The safetensors adapter (backup, for re-exporting to different GGUF types later)
 # These are small (~30-80MB each). Comment out if they exceed GitHub's 100MB limit.

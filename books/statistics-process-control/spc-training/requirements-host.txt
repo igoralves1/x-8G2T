@@ -1,0 +1,5 @@
+# Host-side dependencies (runs on Windows, outside Docker)
+# Install once: pip install -r requirements-host.txt
+
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
