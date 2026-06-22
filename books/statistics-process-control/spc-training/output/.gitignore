@@ -7,6 +7,11 @@
 # Full merged model — use Git LFS for the GGUF (tracked via .gitattributes)
 *.gguf
 !adapter_gguf/llama-3.2-3b-instruct.Q4_K_M.gguf
+!adapter/spc-model-q4km.gguf
+
+# Merged model shards (6+ GB — not needed, only GGUF is deployed)
+adapter/model-*.safetensors
+adapter/*.index.json
 
 # Training checkpoints (GBs of intermediate state — not needed on Jetson)
 checkpoints/

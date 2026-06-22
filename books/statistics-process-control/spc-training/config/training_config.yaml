@@ -12,8 +12,8 @@ model:
 lora:
   # LoRA rank: higher = model learns more but uses more VRAM.
   # 16 is the sweet spot for RTX 5080 with a 3B model.
-  r: 16
-  alpha: 32                   # Always 2× r
+  r: 32
+  alpha: 64                   # Always 2× r
   dropout: 0.05
   target_modules:
     - q_proj
@@ -25,11 +25,11 @@ lora:
     - down_proj
 
 training:
-  epochs: 3                   # How many full passes through the dataset
+  epochs: 6                   # 6 epochs to push loss from 0.69 → ~0.3
   batch_size: 2               # Reduced from 4 — RTX 5080/Blackwell OOM fix
   gradient_accumulation_steps: 8   # Effective batch = 2×8 = 16 (same as before)
   learning_rate: 0.0002
-  warmup_steps: 30
+  warmup_steps: 50
   logging_steps: 10           # Print loss every N steps
   save_steps: 9999            # Disable mid-run checkpoints (pickle conflict between TRL SFTConfig versions)
 

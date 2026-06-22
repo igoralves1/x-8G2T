@@ -250,10 +250,23 @@ def run_from_windows_host() -> None:
     compose = ["docker", "compose", "-f", str(compose_file)]
     cwd = str(script_dir)
 
+    # ── Reset stale output from previous run ──────────────────────────────────
+    for stale in ["metrics.json", "pipeline.json"]:
+        stale_path = script_dir / "output" / stale
+        if stale_path.exists():
+            stale_path.unlink()
+            print(f"  [reset] Cleared {stale}")
+
     # ── Step 1: Start metrics server on host ───────────────────────────────────
     _pipeline(script_dir, "metrics_server", "running", "Starting on port 8765...")
     metrics_proc = _start_metrics_server(script_dir)
     _pipeline(script_dir, "metrics_server", "done", "http://localhost:8765")
+
+    # ── Remove any leftover container from a previous run ─────────────────────
+    subprocess.run(
+        ["docker", "rm", "-f", "spc-training-run"],
+        capture_output=True,  # silence "no such container" errors
+    )
 
     # ── Step 2: Build image ────────────────────────────────────────────────────
     # Uses layer cache on re-runs — only rebuilds changed layers
@@ -270,7 +283,7 @@ def run_from_windows_host() -> None:
     try:
         run(
             "STEP 3 / 3 — Extract dataset + Fine-tune model inside container",
-            compose + ["run", "--rm", "all"],
+            compose + ["run", "--name", "spc-training-run", "all"],
             cwd=cwd,
         )
         _pipeline(script_dir, "complete", "done", "spc-model-q4km.gguf ready")

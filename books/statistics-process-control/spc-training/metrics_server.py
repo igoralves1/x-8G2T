@@ -19,9 +19,12 @@ Then open:  http://localhost:8765
 
 import asyncio
 import json
+import os
 import subprocess
+import sys
 import time
 from pathlib import Path
+from threading import Lock
 
 import uvicorn
 from fastapi import FastAPI
@@ -34,7 +37,12 @@ METRICS_FILE  = HERE / "output" / "metrics.json"
 PIPELINE_FILE = HERE / "output" / "pipeline.json"
 BUILD_LOG     = HERE / "output" / "build_log.txt"
 DASHBOARD     = HERE / "training-dashboard.html"
+RUN_SCRIPT    = HERE / "run_training.py"
 PORT          = 8765
+
+# ── Training process state ─────────────────────────────────────────────────────
+_training_proc: subprocess.Popen | None = None
+_training_lock = Lock()
 
 # ── App ────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="SPC Training Metrics", docs_url=None, redoc_url=None)
@@ -142,6 +150,88 @@ async def docker_info():
         return JSONResponse({"images": images, "containers": containers})
     except Exception as e:
         return JSONResponse({"images": [], "containers": [], "error": str(e)})
+
+
+@app.post("/api/start-training")
+async def start_training():
+    """Launch run_training.py as a background process on the Windows host."""
+    global _training_proc
+    with _training_lock:
+        # Check if already running
+        if _training_proc is not None and _training_proc.poll() is None:
+            return JSONResponse({"ok": False, "error": "Training is already running.", "pid": _training_proc.pid}, status_code=409)
+
+        if not RUN_SCRIPT.exists():
+            return JSONResponse({"ok": False, "error": f"run_training.py not found at {RUN_SCRIPT}"}, status_code=404)
+
+        # Clear stale output from previous run
+        for stale in ["metrics.json", "pipeline.json"]:
+            p = HERE / "output" / stale
+            if p.exists():
+                p.unlink()
+
+        try:
+            _training_proc = subprocess.Popen(
+                [sys.executable, str(RUN_SCRIPT)],
+                cwd=str(HERE),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                # Detach from this server process so it survives independently
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            )
+            return JSONResponse({"ok": True, "pid": _training_proc.pid, "message": f"Training started (PID {_training_proc.pid})"})
+        except Exception as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/stop-training")
+async def stop_training():
+    """Kill the training process tree (run_training.py + all Docker children)."""
+    global _training_proc
+    killed = []
+    errors = []
+
+    with _training_lock:
+        if _training_proc is not None and _training_proc.poll() is None:
+            pid = _training_proc.pid
+            try:
+                if os.name == "nt":
+                    # Windows: kill entire process tree via taskkill
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                                   capture_output=True)
+                else:
+                    import signal, os as _os
+                    _os.killpg(_os.getpgid(pid), signal.SIGTERM)
+                killed.append(f"run_training.py (PID {pid})")
+            except Exception as e:
+                errors.append(str(e))
+            _training_proc = None
+
+    # Also stop any running spc-training Docker containers
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "-q", "--filter", "name=spc-training"],
+            capture_output=True, text=True, timeout=5,
+        )
+        container_ids = result.stdout.strip().splitlines()
+        for cid in container_ids:
+            subprocess.run(["docker", "stop", cid], capture_output=True, timeout=30)
+            killed.append(f"docker container {cid[:12]}")
+    except Exception as e:
+        errors.append(f"docker stop: {e}")
+
+    if killed:
+        return JSONResponse({"ok": True, "killed": killed, "errors": errors})
+    return JSONResponse({"ok": False, "error": "Nothing was running.", "errors": errors}, status_code=409)
+
+
+@app.get("/api/training-process")
+async def training_process():
+    """Return whether a training process is currently running."""
+    global _training_proc
+    running = _training_proc is not None and _training_proc.poll() is None
+    pid = _training_proc.pid if running else None
+    return JSONResponse({"running": running, "pid": pid})
 
 
 @app.get("/api/log")
