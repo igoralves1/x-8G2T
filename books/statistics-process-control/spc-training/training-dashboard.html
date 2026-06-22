@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SPC Fine-Tuning Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d1117;
+    --surface: #161b22;
+    --border:  #30363d;
+    --text:    #e6edf3;
+    --muted:   #8b949e;
+    --green:   #3fb950;
+    --yellow:  #d29922;
+    --blue:    #58a6ff;
+    --purple:  #bc8cff;
+    --red:     #f85149;
+    --orange:  #ff7b72;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
+  header .subtitle { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+  .status-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .s-idle      { background: #21262d; color: var(--muted); }
+  .s-waiting   { background: #21262d; color: var(--muted); }
+  .s-extracting{ background: #1f2d3d; color: var(--blue); }
+  .s-training  { background: #1a2f1a; color: var(--green); }
+  .s-complete  { background: #1f3a1f; color: var(--green); }
+  .s-error     { background: #2d1b1b; color: var(--red); }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    display: inline-block;
+    margin-right: 4px;
+  }
+  .dot.pulse {
+    background: var(--green);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 24px;
+    display: grid;
+    gap: 16px;
+  }
+
+  /* Progress section */
+  .progress-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .progress-label .pct { color: var(--blue); font-weight: 600; font-size: 15px; }
+
+  .progress-bar-bg {
+    height: 10px;
+    background: var(--bg);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--blue), var(--purple));
+    border-radius: 5px;
+    transition: width 1s ease;
+    min-width: 2px;
+  }
+
+  .progress-sub {
+    display: flex;
+    gap: 24px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .progress-sub span { display: flex; align-items: center; gap: 4px; }
+  .progress-sub strong { color: var(--text); }
+
+  /* KPI grid */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .kpi-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+  .kpi-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .kpi-unit {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: 2px;
+  }
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* GPU section */
+  .gpu-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 640px) {
+    .gpu-section { grid-template-columns: 1fr; }
+  }
+
+  .gpu-item label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .bar-bg {
+    height: 8px;
+    background: var(--bg);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s ease;
+  }
+  .bar-vram  { background: linear-gradient(90deg, var(--purple), #e879f9); }
+  .bar-util  { background: linear-gradient(90deg, var(--green), #4ade80); }
+  .bar-temp  { background: linear-gradient(90deg, var(--yellow), var(--orange)); }
+
+  .bar-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Loss chart */
+  .chart-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .chart-section h2 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Log section */
+  .log-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .log-section h2 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  #log-lines {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--muted);
+    max-height: 160px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #log-lines .entry { display: flex; gap: 8px; }
+  #log-lines .ts  { color: #444d56; flex-shrink: 0; }
+  #log-lines .msg { color: var(--text); }
+
+  .refresh-note {
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+    padding: 8px 0 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="dot" id="live-dot"></div>
+  <h1>SPC Fine-Tuning Monitor</h1>
+  <span class="status-badge s-idle" id="status-badge">IDLE</span>
+  <span class="subtitle" id="updated-at">—</span>
+</header>
+
+<main>
+
+  <!-- Progress -->
+  <div class="progress-section">
+    <div class="progress-label">
+      <span id="phase-label">Waiting for training to start…</span>
+      <span class="pct" id="progress-pct">0%</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
+    </div>
+    <div class="progress-sub">
+      <span>Step <strong id="step-val">—</strong> / <strong id="total-steps-val">—</strong></span>
+      <span>Epoch <strong id="epoch-val">—</strong> / <strong id="total-epochs-val">—</strong></span>
+      <span>Dataset <strong id="pairs-val">—</strong> pairs</span>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">Loss</div>
+      <div class="kpi-value" id="kpi-loss">—</div>
+      <div class="kpi-sub" id="kpi-loss-trend"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Learning Rate</div>
+      <div class="kpi-value" id="kpi-lr">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Grad Norm</div>
+      <div class="kpi-value" id="kpi-grad">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Throughput</div>
+      <div class="kpi-value" id="kpi-sps">—<span class="kpi-unit">spl/s</span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Elapsed</div>
+      <div class="kpi-value" id="kpi-elapsed">—</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">ETA</div>
+      <div class="kpi-value" id="kpi-eta">—</div>
+    </div>
+  </div>
+
+  <!-- GPU -->
+  <div class="gpu-section">
+    <div class="gpu-item">
+      <label>VRAM Usage</label>
+      <div class="bar-bg"><div class="bar-fill bar-vram" id="bar-vram" style="width:0%"></div></div>
+      <div class="bar-label" id="lbl-vram">— GB / — GB</div>
+    </div>
+    <div class="gpu-item">
+      <label>GPU Utilization</label>
+      <div class="bar-bg"><div class="bar-fill bar-util" id="bar-util" style="width:0%"></div></div>
+      <div class="bar-label" id="lbl-util">—%</div>
+    </div>
+    <div class="gpu-item">
+      <label>Temperature</label>
+      <div class="bar-bg"><div class="bar-fill bar-temp" id="bar-temp" style="width:0%"></div></div>
+      <div class="bar-label" id="lbl-temp">— °C</div>
+    </div>
+  </div>
+
+  <!-- Loss chart -->
+  <div class="chart-section">
+    <h2>Training Loss</h2>
+    <div class="chart-wrap">
+      <canvas id="loss-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Recent log -->
+  <div class="log-section">
+    <h2>Recent steps</h2>
+    <div id="log-lines"></div>
+  </div>
+
+  <div class="refresh-note" id="refresh-note">Polling every 5 seconds · <a href="/api/metrics" target="_blank" style="color:var(--blue)">raw JSON</a></div>
+
+</main>
+
+<script>
+const API = '/api/metrics';
+const POLL_MS = 5000;
+
+// ── Chart setup ────────────────────────────────────────────────────────────
+const ctx = document.getElementById('loss-chart').getContext('2d');
+const lossChart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Loss',
+      data: [],
+      borderColor: '#58a6ff',
+      backgroundColor: 'rgba(88,166,255,0.08)',
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      tension: 0.3,
+      fill: true,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 400 },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#161b22',
+        borderColor: '#30363d',
+        borderWidth: 1,
+        callbacks: {
+          label: (c) => ` loss: ${c.parsed.y.toFixed(4)}`
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: '#21262d' },
+        ticks: { color: '#8b949e', maxTicksLimit: 8, font: { size: 11 } },
+        title: { display: true, text: 'Step', color: '#8b949e', font: { size: 11 } }
+      },
+      y: {
+        grid: { color: '#21262d' },
+        ticks: { color: '#8b949e', font: { size: 11 } },
+        title: { display: true, text: 'Loss', color: '#8b949e', font: { size: 11 } }
+      }
+    }
+  }
+});
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function fmt_sec(s) {
+  if (s == null) return '—';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = Math.floor(s % 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${ss.toString().padStart(2,'0')}s`;
+  return `${ss}s`;
+}
+
+function fmt_lr(v) {
+  if (v == null) return '—';
+  if (v < 0.0001) return v.toExponential(2);
+  return v.toFixed(6);
+}
+
+function set(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val ?? '—';
+}
+
+function setWidth(id, pct) {
+  const el = document.getElementById(id);
+  if (el) el.style.width = Math.min(100, Math.max(0, pct || 0)) + '%';
+}
+
+const STATUS_CLASSES = ['s-idle','s-waiting','s-extracting','s-training','s-complete','s-error'];
+function setStatus(status) {
+  const badge = document.getElementById('status-badge');
+  const dot   = document.getElementById('live-dot');
+  badge.classList.remove(...STATUS_CLASSES);
+  badge.classList.add('s-' + status);
+  badge.textContent = status.toUpperCase();
+  dot.classList.toggle('pulse', status === 'training' || status === 'extracting');
+}
+
+const logLines = document.getElementById('log-lines');
+const logBuffer = [];
+function addLog(step, loss, lr) {
+  const ts = new Date().toLocaleTimeString();
+  logBuffer.push({ ts, step, loss, lr });
+  if (logBuffer.length > 40) logBuffer.shift();
+  logLines.innerHTML = logBuffer.slice().reverse().map(e =>
+    `<div class="entry">
+       <span class="ts">${e.ts}</span>
+       <span class="msg">step ${e.step}  loss=${e.loss != null ? e.loss.toFixed(4) : '—'}  lr=${fmt_lr(e.lr)}</span>
+     </div>`
+  ).join('');
+}
+
+// ── Poll loop ──────────────────────────────────────────────────────────────
+let lastStep = -1;
+
+async function poll() {
+  try {
+    const res = await fetch(API);
+    if (!res.ok) throw new Error(res.status);
+    const m = await res.json();
+    render(m);
+  } catch (e) {
+    setStatus('idle');
+    set('phase-label', 'Cannot reach metrics server — is metrics_server.py running?');
+  }
+  setTimeout(poll, POLL_MS);
+}
+
+function render(m) {
+  // Status + header
+  setStatus(m.status || 'idle');
+
+  const ts = m.updated_at ? new Date(m.updated_at).toLocaleTimeString() : '—';
+  set('updated-at', `Last update: ${ts}`);
+
+  // Phase label
+  const phaseLabel =
+    m.status === 'extracting' ? `Extracting PDFs — ${m.message || ''}` :
+    m.status === 'training'   ? `Training — Epoch ${m.epoch ?? '—'} / ${m.total_epochs ?? '—'}` :
+    m.status === 'complete'   ? 'Training complete' :
+    'Waiting for training to start…';
+  set('phase-label', phaseLabel);
+
+  // Progress
+  const pct = m.progress_pct ?? 0;
+  set('progress-pct', pct.toFixed(1) + '%');
+  setWidth('progress-bar', pct);
+  set('step-val', m.step ?? '—');
+  set('total-steps-val', m.total_steps ?? '—');
+  set('epoch-val', m.epoch != null ? Number(m.epoch).toFixed(1) : '—');
+  set('total-epochs-val', m.total_epochs ?? '—');
+  set('pairs-val', m.dataset_pairs ?? '—');
+
+  // KPIs
+  set('kpi-loss', m.loss != null ? m.loss.toFixed(4) : '—');
+  set('kpi-lr', fmt_lr(m.learning_rate));
+  set('kpi-grad', m.grad_norm != null ? m.grad_norm.toFixed(3) : '—');
+  set('kpi-sps', m.samples_per_sec != null ? m.samples_per_sec.toFixed(1) : '—');
+  set('kpi-elapsed', fmt_sec(m.elapsed_seconds));
+  set('kpi-eta', fmt_sec(m.eta_seconds));
+
+  // Loss trend label
+  if (m.history && m.history.length >= 2) {
+    const h = m.history;
+    const delta = h[h.length-1].loss - h[0].loss;
+    const trend = delta < 0 ? `↓ ${Math.abs(delta).toFixed(4)} from start` : `↑ ${delta.toFixed(4)} from start`;
+    set('kpi-loss-trend', trend);
+  }
+
+  // GPU
+  const gpu = m.gpu || {};
+  const vramPct = gpu.vram_pct ?? 0;
+  setWidth('bar-vram', vramPct);
+  set('lbl-vram', gpu.vram_used_gb != null
+    ? `${gpu.vram_used_gb.toFixed(1)} GB / ${gpu.vram_total_gb?.toFixed(1) ?? '—'} GB  (${vramPct.toFixed(0)}%)`
+    : '—');
+
+  const utilPct = gpu.utilization_pct ?? 0;
+  setWidth('bar-util', utilPct);
+  set('lbl-util', gpu.utilization_pct != null ? `${utilPct}%` : 'n/a (pynvml not installed)');
+
+  const temp = gpu.temperature_c;
+  setWidth('bar-temp', temp != null ? (temp / 100 * 100) : 0);
+  set('lbl-temp', temp != null ? `${temp} °C` : 'n/a');
+
+  // Loss chart
+  if (m.history && m.history.length > 0) {
+    const labels = m.history.map(h => h.step);
+    const data   = m.history.map(h => h.loss);
+    lossChart.data.labels = labels;
+    lossChart.data.datasets[0].data = data;
+    lossChart.update('none');
+  }
+
+  // Log
+  if (m.step && m.step !== lastStep) {
+    lastStep = m.step;
+    addLog(m.step, m.loss, m.learning_rate);
+  }
+}
+
+// Start
+poll();
+</script>
+</body>
+</html>
