@@ -390,11 +390,10 @@ services:
     networks: [iot-net]
     ports:
       - "8001:8001"
+    privileged: true                                    # nsenter needs this for tegrastats (GPU util)
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro                        # Docker API
-      - /sys/devices/virtual/thermal:/sys/devices/virtual/thermal:ro        # Jetson thermal zones
-      - /sys/class/thermal:/sys/class/thermal:ro                            # thermal class symlinks
-    pid: host                                           # psutil reads host /proc directly
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # Docker API
+    pid: host                                           # psutil + /proc/1/net/dev read host metrics
     environment:
       PYTHONUNBUFFERED: "1"
     healthcheck:
