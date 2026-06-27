@@ -117,121 +117,142 @@ lets you act as Environment 1 from any machine.
 
 ```mermaid
 flowchart TB
-    subgraph ENV1["🛰️  ENVIRONMENT 1 — EDGE DEVICES"]
+    %% ── Environment 1 (edge devices) ────────────────────────────────────────
+    subgraph ENV1["🛰️  Environment 1 — Edge Devices"]
         direction LR
-        S1[Temp / Humidity<br/>sensor_001]
-        S2[Compressor Vibration<br/>sensor_002]
-        GW[Modbus Gateway<br/>gateway_001]
-        CAM[Inspection Camera<br/>camera_001]
+        S1["Temp / Humidity<br/>sensor_001"]
+        S2["Compressor Vibration<br/>sensor_002"]
+        GW["Modbus Gateway<br/>gateway_001"]
+        CAM["IP Camera<br/>camera_001"]
     end
 
-    ENV1 -- "MQTT over TLS :8883<br/>telemetry/#" --> EMQX
-
-    subgraph ENV2["🧠  ENVIRONMENT 2 — JETSON ORIN NANO  (Docker, CUDA pre-installed)"]
+    %% ── Environment 2 (Jetson — all Docker) ─────────────────────────────────
+    subgraph ENV2["🧠  Environment 2 — Jetson Orin Nano  (Docker + CUDA)"]
         direction TB
 
-        subgraph ING["Ingestion & Streaming"]
+        subgraph ING["① Ingestion & Streaming"]
             direction LR
-            EMQX[EMQX<br/>MQTT broker]
-            BR[mqtt-kafka-bridge]
-            KAFKA[Apache Kafka<br/>KRaft]
-            FLINK[Apache Flink<br/>validate · enrich · alert]
+            EMQX["EMQX<br/>MQTT Broker  :8883"]
+            BR["mqtt-kafka-bridge"]
+            KAFKA["Apache Kafka<br/>KRaft  :9092"]
+            FLINK["Apache Flink<br/>validate · alert  :8081"]
             EMQX --> BR --> KAFKA --> FLINK
         end
 
-        subgraph STORE["Storage"]
+        subgraph STORE["② Storage"]
             direction LR
-            IOTDB[(Apache IoTDB<br/>time-series)]
-            PG[(PostgreSQL + pgvector<br/>metadata · alarms · agent memory)]
-            QD[(Qdrant<br/>RAG vectors: manuals + SPC books)]
+            IOTDB[("IoTDB<br/>time-series  :6667")]
+            PG[("PostgreSQL + pgvector<br/>metadata · alarms · memory  :5432")]
+            QD[("Qdrant<br/>RAG vectors  :6333")]
         end
 
-        subgraph GPU["GPU Inference Servers — llama.cpp / CUDA"]
+        subgraph GPU["③ GPU Inference — llama.cpp / CUDA"]
             direction LR
-            LLM[llm-server<br/>Llama-3.2-3B]
-            VLM[vlm-server<br/>SmolVLM2]
-            EMB[embeddings<br/>nomic-embed]
+            LLM["llm-server<br/>Llama-3.2-3B  :8090"]
+            VLM["vlm-server<br/>SmolVLM2  :8092"]
+            EMB["embeddings<br/>nomic-embed  :8091"]
         end
 
-        subgraph BRAIN["Agent Orchestrator (FastAPI)"]
+        subgraph AI["④ Agent Orchestrator  :8000"]
             direction TB
-            SUP{{Supervisor Agent}}
-            TA[Telemetry Analyst]
-            SA[SPC / Six Sigma Analyst]
-            DE[Diagnostic Engineer]
-            VI[Vision Inspector]
-            RA[Remediation Agent]
+            SUP{{"Supervisor Agent"}}
+            TA["Telemetry<br/>Analyst"]
+            SA["SPC / Six Sigma<br/>Analyst"]
+            DE["Diagnostic<br/>Engineer"]
+            VI["Vision<br/>Inspector"]
+            RA["Remediation<br/>Agent"]
             SUP --> TA & SA & DE & VI & RA
         end
 
-        SPCMCP[spc-mcp<br/>LOCAL SPC / Six Sigma<br/>MCP server]
-
-        subgraph VIZ["Visualization & API"]
+        subgraph SUPPORT["⑤ Support Services"]
             direction LR
-            GRAF[Grafana]
-            SUPS[Superset]
+            SPCMCP["spc-mcp<br/>SPC MCP server  :8765"]
+            IDX["rag-indexer<br/>books → Qdrant"]
+            OBS["observability<br/>board + containers  :8001"]
         end
 
-        IDX[rag-indexer<br/>knowledge-base + SPC books ➜ Qdrant]
-
-        FLINK --> IOTDB
-        FLINK -.alerts.-> PG
-
-        SA -- MCP tools --> SPCMCP
-        BRAIN -- query --> IOTDB
-        BRAIN -- query --> PG
-        BRAIN -- RAG retrieve --> QD
-        BRAIN -- chat/vision --> LLM
-        BRAIN -- chat/vision --> VLM
-        BRAIN -- embed --> EMB
-        IDX -- embed --> EMB
-        IDX --> QD
-        IDX -- bookkeeping --> PG
-
-        GRAF --> PG
-        GRAF --> IOTDB
-        SUPS --> PG
+        subgraph VIZ["⑥ Visualization & BI"]
+            direction LR
+            GRAF["Grafana  :3000"]
+            SUPS["Superset  :8088"]
+        end
     end
 
-    classDef db fill:#1d2b53,stroke:#7e57c2,color:#fff;
-    classDef gpu fill:#1b3a1b,stroke:#76b900,color:#fff;
-    classDef mcp fill:#3a1b3a,stroke:#8a2be2,color:#fff;
-    class IOTDB,PG,QD db;
-    class LLM,VLM,EMB gpu;
-    class SPCMCP mcp;
+    %% ── Edges (all after node definitions to prevent floating nodes) ─────────
+    ENV1 -->|"MQTT / TLS  :8883"| EMQX
+
+    FLINK -->|telemetry| IOTDB
+    FLINK -.->|alerts| PG
+
+    SA -->|MCP tools| SPCMCP
+    AI -->|query| IOTDB
+    AI -->|query| PG
+    AI -->|RAG| QD
+    AI -->|chat| LLM
+    AI -->|vision| VLM
+    AI -->|embed| EMB
+
+    IDX -->|embed| EMB
+    IDX --> QD
+    IDX -.->|bookkeeping| PG
+
+    GRAF --> IOTDB
+    GRAF --> PG
+    SUPS --> PG
+
+    %% ── Styles ───────────────────────────────────────────────────────────────
+    classDef db   fill:#1d2b53,stroke:#7e57c2,color:#fff
+    classDef gpu  fill:#1b3a1b,stroke:#76b900,color:#fff
+    classDef mcp  fill:#3a1b3a,stroke:#8a2be2,color:#fff
+    classDef obs  fill:#0c2233,stroke:#0ea5e9,color:#fff
+    class IOTDB,PG,QD db
+    class LLM,VLM,EMB gpu
+    class SPCMCP mcp
+    class OBS obs
 ```
 
 <details>
 <summary>📐 ASCII fallback diagram</summary>
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  ENVIRONMENT 1 — EDGE DEVICES                                              │
-│  [temp/humidity] [vibration] [modbus gateway] [IP camera]                 │
-└───────────────────────────────┬──────────────────────────────────────────┘
-                                 │  MQTT over TLS :8883  (topic: telemetry/#)
-                                 ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  ENVIRONMENT 2 — JETSON ORIN NANO  (all Docker; CUDA already installed)    │
-│                                                                            │
-│  INGESTION:   EMQX ─► mqtt-kafka-bridge ─► Kafka ─► Flink (validate/alert) │
-│                                                                            │
-│  STORAGE:     IoTDB (time-series)                                          │
-│               PostgreSQL + pgvector (metadata, alarms, agent memory)       │
-│               Qdrant (RAG vectors: device manuals + SPC books)             │
-│                                                                            │
-│  GPU SERVERS (llama.cpp/CUDA): llm-server | vlm-server | embeddings        │
-│                                                                            │
-│  AGENT ORCHESTRATOR (FastAPI):                                             │
-│     Supervisor ─► [Telemetry] [SPC/SixSigma] [Diagnostic+RAG]             │
-│                   [Vision] [Remediation]                                   │
-│         └─ SPC agent ─► LOCAL MCP (spc-mcp): control charts, Nelson/WE    │
-│                         rules, Cp/Cpk capability, chart rendering          │
-│                                                                            │
-│  rag-indexer: knowledge-base/*.md + books/*.pdf ─► embeddings ─► Qdrant    │
-│                                                                            │
-│  VISUALIZATION: Grafana (PG + IoTDB) | Superset (PG)                      │
-└──────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ENVIRONMENT 1 — EDGE DEVICES                                               │
+│  [Temp/Humidity sensor_001] [Vibration sensor_002]                          │
+│  [Modbus Gateway gateway_001] [IP Camera camera_001]                        │
+└──────────────────────────┬──────────────────────────────────────────────────┘
+                            │  MQTT / TLS  :8883   topic: telemetry/#
+                            ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ENVIRONMENT 2 — JETSON ORIN NANO  (all services run as Docker containers)  │
+│                                                                             │
+│  ① INGESTION & STREAMING                                                    │
+│     EMQX :8883/:18083  ─►  mqtt-kafka-bridge  ─►  Kafka KRaft :9092        │
+│                                               ─►  Flink validate/alert :8081│
+│                                                                             │
+│  ② STORAGE                                                                  │
+│     IoTDB :6667/:18080   — time-series telemetry (TTL 30d/1y)               │
+│     PostgreSQL :5432     — metadata, alarms, agent runs/memory (pgvector)   │
+│     Qdrant :6333         — RAG vectors: device manuals + SPC books          │
+│                                                                             │
+│  ③ GPU INFERENCE  (llama.cpp / CUDA — Ampere sm_87)                         │
+│     llm-server :8090  (Llama-3.2-3B)   vlm-server :8092  (SmolVLM2)        │
+│     embeddings :8091  (nomic-embed 768d)                                    │
+│                                                                             │
+│  ④ AGENT ORCHESTRATOR  :8000  (FastAPI)                                     │
+│     Supervisor ─► Telemetry Analyst    ─► query IoTDB / PG                  │
+│                ─► SPC / Six Sigma      ─► MCP tools ─► spc-mcp :8765       │
+│                ─► Diagnostic Engineer  ─► RAG retrieve ─► Qdrant            │
+│                ─► Vision Inspector     ─► SmolVLM2                          │
+│                ─► Remediation Agent    ─► create alarm / save memory        │
+│                                                                             │
+│  ⑤ SUPPORT SERVICES                                                         │
+│     spc-mcp :8765      — deterministic SPC/Six Sigma MCP server             │
+│     rag-indexer        — books/*.pdf + knowledge-base/ ─► embeddings ─► QD  │
+│     observability :8001— Jetson board + all containers, 1-second WebSocket  │
+│                                                                             │
+│  ⑥ VISUALIZATION & BI                                                       │
+│     Grafana :3000  (IoTDB + PostgreSQL)   Superset :8088  (PostgreSQL)      │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 </details>
 
