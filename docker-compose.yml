@@ -46,7 +46,12 @@ volumes:
   qdrant_data:
   grafana_data:
   superset_data:
-  models:          # shared GGUF model cache for all inference servers
+  models:          # shared GGUF model cache — bind-mounted from ./models/
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/models
   emqx_data:
 
 services:
@@ -367,6 +372,36 @@ services:
       interval: 30s
       timeout: 10s
       retries: 10
+
+  # ==========================================================================
+  # 9a. Observability server  -  board + container health/metrics API
+  #     REST:  http://host:8001/api/metrics
+  #     WS:    ws://host:8001/ws  (full snapshot pushed every 1 second)
+  # ==========================================================================
+  observability:
+    build:
+      context: ./services/observability
+      dockerfile: Dockerfile
+    image: x8g2t/observability:latest
+    container_name: observability
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["core", "all"]
+    networks: [iot-net]
+    ports:
+      - "8001:8001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro                        # Docker API
+      - /sys/devices/virtual/thermal:/sys/devices/virtual/thermal:ro        # Jetson thermal zones
+      - /sys/class/thermal:/sys/class/thermal:ro                            # thermal class symlinks
+    pid: host                                           # psutil reads host /proc directly
+    environment:
+      PYTHONUNBUFFERED: "1"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   # ==========================================================================
   # 9b. SPC MCP server  -  local Model Context Protocol server exposing
