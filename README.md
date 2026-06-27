@@ -28,6 +28,7 @@
 11. [End-to-End Data Flow](#11-end-to-end-data-flow)
 12. [Getting Started on the Jetson](#12-getting-started-on-the-jetson)
 13. [Services & Ports Reference](#13-services--ports-reference)
+    - [13a. Observability API — Board & Container Metrics](#13a-observability-api--board--container-metrics)
 14. [AI Models](#14-ai-models)
 15. [API Reference](#15-api-reference)
 16. [Configuration (.env)](#16-configuration-env)
@@ -699,11 +700,218 @@ curl -s -X POST localhost:8000/spc/analyze \
 | `spc-mcp` | build (FastMCP) | 8765 | – | local SPC / Six Sigma MCP server |
 | `agent-orchestrator` | build (FastAPI) | 8000 | – | multi-agent brain + RAG + MCP client |
 | `rag-indexer` | build | – | – | knowledge + books → Qdrant |
+| `observability` | build (FastAPI) | 8001 | – | board + container hardware metrics API |
 | `grafana` | grafana:11.1.0 | 3000 | – | dashboards |
 | `superset` | build (4.0) | 8088 | – | BI |
 
 **Web UIs:** Grafana `:3000` · EMQX `:18083` · Flink `:8081` · Qdrant
-`:6333/dashboard` · Superset `:8088` · Agent API docs `:8000/docs`.
+`:6333/dashboard` · Superset `:8088` · Agent API docs `:8000/docs` · Observability
+API docs `:8001/docs`.
+
+---
+
+## 13a. Observability API — Board & Container Metrics
+
+The `observability` container (port **8001**) exposes a complete real-time view of
+the Jetson Orin Nano hardware and every Docker container, updated **every 1 second**.
+It is the data source for the admin dashboard at
+`http://<jetson-ip>:5173/sm-dashboard-client/admin/x-8g2t`.
+
+### Transport
+
+| Endpoint | Protocol | Description |
+|---|---|---|
+| `GET /health` | REST | Liveness probe; includes connected WebSocket client count and tegrastats status |
+| `GET /api/metrics` | REST | Full snapshot (board + all containers) |
+| `GET /api/board` | REST | Board metrics only |
+| `GET /api/containers` | REST | All containers (stats, no logs) |
+| `GET /api/containers/{name}/logs` | REST | Last N log lines for a named container |
+| `WS /ws` | WebSocket | Streams a full snapshot every 1 second to every connected client |
+
+Connect the frontend with:
+```js
+const ws = new WebSocket('ws://10.0.0.11:8001/ws')
+ws.onmessage = e => { const data = JSON.parse(e.data) /* board + containers */ }
+```
+
+### Board metrics — what is collected every second
+
+#### CPU  (`board.cpu`)
+
+| Field | Source | Detail |
+|---|---|---|
+| `util_percent` | psutil | Overall CPU utilisation % |
+| `util_per_core[]` | psutil | Per-core utilisation % (6 cores) |
+| `count_logical / physical` | psutil | 6 logical / 6 physical (Cortex-A78AE) |
+| `freq_mhz` | psutil | Weighted average current frequency |
+| `freq_max_mhz` | psutil | Max allowed frequency (1344 MHz) |
+| `load_avg[1m, 5m, 15m]` | psutil | System load averages |
+| `cores[].freq_mhz` | `/sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq` | Per-core current frequency in MHz |
+| `cores[].freq_max/min_mhz` | sysfs | Per-core frequency bounds |
+| `cores[].governor` | sysfs | Per-core governor (`schedutil`) |
+| `cores[].util_percent` | tegrastats | Per-core live utilisation % from `CPU [util%@freq,…]` |
+
+#### GPU  (`board.gpu`)  — Ampere, 1024 CUDA cores, 32 Tensor cores
+
+| Field | Source | Detail |
+|---|---|---|
+| `util_percent` | tegrastats `GR3D_FREQ` | GPU engine utilisation % (0–100) |
+| `freq_mhz` | `/sys/class/devfreq/17000000.gpu/cur_freq` | Current GPU clock in MHz |
+| `freq_max_mhz` | sysfs | Max GPU clock (918 MHz) |
+| `freq_min_mhz` | sysfs | Min GPU clock (306 MHz) |
+| `governor` | sysfs | Clock governor (`nvhost_podgov`) |
+| `available_freqs[]` | sysfs | 8 discrete steps: 306 / 408 / 510 / 612 / 714 / 816 / 918 / 1020 MHz |
+| `emc_util_percent` | tegrastats `EMC_FREQ` | External Memory Controller utilisation % |
+| `emc_freq_mhz` | tegrastats | EMC clock (2133 MHz nominal) |
+| `vic_util_percent` | tegrastats `VIC_FREQ` | Video Image Compositor utilisation % |
+
+> **GPU memory note:** the Jetson Orin Nano uses **unified memory** — the CPU and GPU
+> share the same physical LPDDR5 pool. There is no separate VRAM. GPU allocations
+> come from the same 8 GB seen by the OS. The `memory.tegra_lfb_*` fields report
+> the largest contiguous free block count and size, which indicates how fragmented
+> the unified pool is — low `lfb` values under GPU load are normal.
+
+#### Memory  (`board.memory`)  — unified CPU + GPU pool
+
+| Field | Source | Detail |
+|---|---|---|
+| `total` | psutil | Total physical RAM (7,989,755,904 bytes ≈ 8 GB LPDDR5) |
+| `used` | psutil | OS-level used (total − available) |
+| `available` | psutil | Memory available to new processes |
+| `percent` | psutil | Used % |
+| `buffers / cached` | psutil | Kernel buffers and page cache |
+| `tegra_used_mb` | tegrastats `RAM` | Tegra-reported used MB (includes GPU allocations) |
+| `tegra_total_mb` | tegrastats | Tegra-reported total MB (≈ 7620 MB usable) |
+| `tegra_lfb_blocks` | tegrastats `lfb NxMB` | Number of largest-free-block chunks |
+| `tegra_lfb_mb` | tegrastats | Size of each largest-free-block chunk in MB |
+
+#### Swap  (`board.swap`)  — zram
+
+| Field | Detail |
+|---|---|
+| `total / used / free` | zram swap pool (≈ 4 GB — 6 × zram devices) |
+| `percent` | Used % |
+
+#### Disk  (`board.disk`)
+
+Three physical devices are tracked independently:
+
+| Key | Device | Type | Capacity | Noted detail |
+|---|---|---|---|---|
+| `emmc` | `/dev/mmcblk0` | eMMC | 476 GB | System drive; `/` mounted on `mmcblk0p1` (9.7% used) |
+| `nvme0` | `/dev/nvme0n1` | NVMe | 1 TB | Samsung SSD 990 EVO Plus 1TB |
+| `nvme1` | `/dev/nvme1n1` | NVMe | 1 TB | Kingston SNV3S M.2 1TB |
+
+Each entry includes:
+
+| Field | Source | Detail |
+|---|---|---|
+| `usage.total / used / free / percent` | psutil `disk_usage` | Filesystem capacity (where mounted) |
+| `io.reads_completed` | `/sys/block/*/stat` field 0 | Total read operations since boot |
+| `io.sectors_read` | sysfs stat field 2 | Sectors read (× 512 = bytes) |
+| `io.bytes_read` | computed | Cumulative bytes read |
+| `io.writes_completed` | sysfs stat field 4 | Total write operations since boot |
+| `io.bytes_written` | computed | Cumulative bytes written |
+| `io.ios_in_progress` | sysfs stat field 8 | I/O operations currently in flight |
+| `model` | `/sys/class/nvme/nvme*/model` | NVMe model string (NVMe only) |
+| `size_gb` | `/sys/block/*/size` | Physical device capacity in GB |
+
+#### Network  (`board.net`)
+
+Read from `/proc/1/net/dev` (host network namespace) so all **host interfaces** are
+visible, not just the container's own `eth0`.
+
+| Interface | Role |
+|---|---|
+| `wlP1p1s0` | Wi-Fi (802.11ac) — primary uplink |
+| `enP8p1s0` | Gigabit Ethernet |
+| `docker0` | Docker default bridge |
+| `br-*` | Docker compose network bridge |
+| `veth*` | Per-container virtual Ethernet pairs |
+| `can0` | CAN bus interface |
+| `usb0 / usb1` | USB gadget interfaces |
+| `l4tbr0` | L4T USB device Ethernet bridge |
+| `lo` | Loopback |
+
+Each interface reports: `bytes_sent`, `bytes_recv`, `packets_sent`, `packets_recv`,
+`errin`, `errout`, `dropin`, `dropout`.
+
+#### Power  (`board.power`)  — INA3221 (hwmon1)
+
+Three power rails are measured by the on-board **Texas Instruments INA3221**
+triple-channel current/voltage monitor:
+
+| Rail | Channel | Measures | Typical idle |
+|---|---|---|---|
+| `VDD_IN` | ch1 | Total board input power (5 V rail) | ~5.3 W |
+| `VDD_CPU_GPU_CV` | ch2 | CPU + GPU + CV accelerator combined | ~0.6 W |
+| `VDD_SOC` | ch3 | SoC logic (excluding CPU/GPU) | ~1.5 W |
+
+Each rail reports `current_ma`, `voltage_mv`, and `power_mw` (= mA × mV / 1000).
+`power.total_mw` is the sum of all three rails.
+
+#### Temperatures  (`board.temperatures`)
+
+| Key | Sensor | Typical idle |
+|---|---|---|
+| `cpu-thermal` | CPU cluster thermal zone | ~51 °C |
+| `gpu-thermal` | GPU thermal zone | ~50 °C |
+| `soc0-thermal` | SoC thermal zone 0 | ~50 °C |
+| `soc1-thermal` | SoC thermal zone 1 | ~50 °C |
+| `soc2-thermal` | SoC thermal zone 2 | ~48 °C |
+| `tj-thermal` | Junction temperature (max of all zones) | ~51 °C |
+| `tegrastats/cpu` · `tegrastats/gpu` · … | tegrastats cross-reference | same sensors, higher precision |
+
+Source: `/sys/devices/virtual/thermal/thermal_zone*/temp` (millidegrees → °C).
+
+#### Fan  (`board.fan`)
+
+| Field | Source | Detail |
+|---|---|---|
+| `pwmfan/pwm1` | `/sys/class/hwmon/hwmon0/pwm1` | Fan PWM duty cycle (0–255). 76 ≈ 30% duty at idle. |
+
+#### System
+
+| Field | Detail |
+|---|---|
+| `uptime_seconds` | Seconds since last boot |
+| `boot_time` | Unix timestamp of last boot |
+| `tegrastats_available` | `true` if tegrastats is reachable via nsenter (GPU util active) |
+
+### Container metrics — per running container
+
+| Field | Source | Detail |
+|---|---|---|
+| `id` | Docker API | Short container ID |
+| `name` | Docker API | Container name |
+| `status` | Docker API | `running` / `restarting` / `exited` / … |
+| `image` | Docker API | Image tag |
+| `health` | Docker API | `healthy` / `unhealthy` / `starting` / `none` |
+| `restart_count` | Docker API | Cumulative restart count |
+| `ports` | Docker API | Port bindings map |
+| `cpu_percent` | Docker stats API | CPU utilisation % (accounts for all host cores) |
+| `memory_usage` | Docker stats | RSS − page cache (matches `docker stats` display) |
+| `memory_limit` | Docker stats | Container memory limit (= host RAM if unlimited) |
+| `memory_percent` | computed | `memory_usage / memory_limit × 100` |
+| `net_rx_bytes` | Docker stats | Cumulative bytes received across all container interfaces |
+| `net_tx_bytes` | Docker stats | Cumulative bytes transmitted |
+| `block_read_bytes` | Docker stats blkio | Cumulative bytes read from block devices |
+| `block_write_bytes` | Docker stats blkio | Cumulative bytes written to block devices |
+| `logs[]` | Docker logs API | Last 30 log lines with timestamps |
+
+### Implementation notes
+
+- **tegrastats** is launched via `nsenter --target 1 --mount` so it runs in the
+  host's mount namespace and can access all NVIDIA kernel interfaces. This requires
+  `privileged: true` on the observability container.
+- **sysfs reads** use raw `open()` (not Python's `pathlib.read_text()`) to avoid
+  buffered-I/O failures on kernel virtual files.
+- **Container stats** for all running containers are fetched **in parallel** using
+  `asyncio.gather` + a `ThreadPoolExecutor` (32 workers), so the 1-second budget is
+  not multiplied by the number of containers.
+- **Network stats** come from `/proc/1/net/dev` (PID 1 = host init), not the
+  container's own network namespace, so all host interfaces are visible.
+- **Code:** [`services/observability/app/main.py`](services/observability/app/main.py)
 
 ---
 
