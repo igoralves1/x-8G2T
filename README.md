@@ -934,6 +934,32 @@ Source: `/sys/devices/virtual/thermal/thermal_zone*/temp` (millidegrees → °C)
   container's own network namespace, so all host interfaces are visible.
 - **Code:** [`services/observability/app/main.py`](services/observability/app/main.py)
 
+### Admin Dashboard — X-8G2T Node Monitor
+
+A live web dashboard consumes this API at
+**`http://<jetson-ip>:5173/sm-dashboard-client/admin/x-8g2t`**. It is part of the
+[`sm-dashboard-client`](https://github.com/igoralves1/sm-dashboard-client) Vue 3 app
+(`simemap` branch) and connects directly to `ws://<host>:8001/ws`, re-rendering every
+second. The WebSocket host is derived from `window.location.hostname`, so it works from
+any machine on the LAN, and it auto-reconnects every 3 s if the connection drops.
+
+| Panel | What it shows |
+|---|---|
+| **Header** | Live WebSocket pulse dot, tegrastats status badge, board uptime |
+| **KPI row** | Six cards — CPU %, GPU %, RAM %, total Power (W), junction Temp (°C), Uptime |
+| **CPU** | 6 per-core utilisation progress bars with current frequency + governor (`schedutil`) |
+| **GPU** | GR3D util %, devfreq bar (306–918 MHz), EMC util/freq, frequency-step chips (active one highlighted) |
+| **Memory** | Unified LPDDR5 usage bar, cache/buffers/swap breakdown, tegrastats LFB fragmentation view |
+| **Power** | Three INA3221 rails (VDD_IN / VDD_CPU_GPU_CV / VDD_SOC) with mA + mV + mW each + fan PWM |
+| **Temperatures** | Every Jetson thermal zone as a card with colour-coded bars (green → orange → red) |
+| **Disk** | One card per device (eMMC, nvme0, nvme1) with usage bar + cumulative read/write I/O counters |
+| **Network** | All host interfaces in a table with WiFi/ETH/Docker badges and per-interface bytes/packets |
+| **Containers** | Sortable table (running first); click a row to expand a live terminal log panel |
+| **Raw data** | Collapsible JSON view with direct links to `/api/board` and `/api/containers` |
+
+- **Code:** [`src/views/admin/x-8g2t/index.vue`](https://github.com/igoralves1/sm-dashboard-client/blob/simemap/src/views/admin/x-8g2t/index.vue)
+  in the `sm-dashboard-client` repo (route `/admin/x-8g2t`).
+
 ---
 
 ## 14. AI Models
