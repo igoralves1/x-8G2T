@@ -678,10 +678,46 @@ curl -s -X POST localhost:8000/spc/analyze \
 | `make models` | download GGUF models into the `models` volume |
 | `make up` | build + start the full stack (`--profile all`) |
 | `make core` | start only the core pipeline (no Superset/VLM) |
+| `make watch` | build + start the **whole stack, then watch & self-heal** (see below) |
+| `make health` | one-shot health report of every service (changes nothing) |
 | `make index` | (re)build the RAG knowledge base incl. the SPC books |
 | `make spc-test` | run the SPC engine test suite |
 | `make ps` / `make logs S=<svc>` | status / tail logs |
 | `make down` / `make clean` | stop / stop and delete all volumes |
+
+### Watchdog — build, start & self-heal everything
+
+`make watch` (or [`scripts/watchdog.sh`](scripts/watchdog.sh)) is a one-command
+supervisor for the whole platform. It runs preflight (Docker, `.env`, TLS certs,
+models), brings up **every** container — databases, IoT pipeline, GPU AI servers,
+the agent brain, MCP, observability, BI — then **continuously watches them** and
+turns back on anything that goes missing.
+
+Docker's `restart: unless-stopped` only reacts to *crashes*; the watchdog adds the
+layer Docker doesn't: it **recreates missing/exited containers** and **restarts
+services that are running but `unhealthy`**, with per-service backoff so a broken
+service can't restart-storm. The one-shot `rag-indexer` job is recognised and never
+treated as "down".
+
+```bash
+make watch                                  # build + up --profile all, then watch
+make watch-core                             # core pipeline only
+make health                                 # single health report, changes nothing
+
+# direct, with options:
+scripts/watchdog.sh -p core -i 10           # core profile, check every 10 s
+scripts/watchdog.sh --no-up --once          # one heal pass over a running stack
+scripts/watchdog.sh --dry-run               # show what it WOULD do, run nothing
+```
+
+| Flag | Meaning |
+|---|---|
+| `-p, --profile <name>` | compose profile to manage (default `all`) |
+| `-i, --interval <secs>` | seconds between checks (default 15) |
+| `--no-build` / `--no-up` | skip the image build / skip the initial bring-up |
+| `--no-heal` | only start missing services, don't restart unhealthy ones |
+| `--once` | run a single check pass then exit (good for cron) |
+| `--dry-run` | report actions without executing them |
 
 ### Profiles
 
@@ -1121,6 +1157,7 @@ x-8G2T/
 ├── superset/                     # self-initialising BI image
 └── scripts/
     ├── download-models.sh        # pull GGUF models into the shared volume
+    ├── watchdog.sh               # build + start + watch/self-heal the whole stack
     └── simulate-device.py        # Environment 1 device simulator
 ```
 

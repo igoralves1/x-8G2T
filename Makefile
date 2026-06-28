@@ -51,6 +51,18 @@ down: ## Stop the stack
 clean: ## Stop the stack and DELETE all volumes (DESTRUCTIVE)
 	$(COMPOSE) --profile all down -v
 
+.PHONY: watch
+watch: ## Build + start the whole stack, then watch & self-heal (Ctrl-C to stop)
+	@chmod +x scripts/watchdog.sh && ./scripts/watchdog.sh --profile all
+
+.PHONY: watch-core
+watch-core: ## Same as watch but only the core pipeline (no Superset / VLM)
+	@chmod +x scripts/watchdog.sh && ./scripts/watchdog.sh --profile core
+
+.PHONY: health
+health: ## One-shot health report of every service (changes nothing)
+	@chmod +x scripts/watchdog.sh && ./scripts/watchdog.sh --no-up --once --dry-run
+
 .PHONY: ps
 ps: ## Show service status
 	$(COMPOSE) ps
