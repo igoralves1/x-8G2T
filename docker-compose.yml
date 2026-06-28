@@ -44,7 +44,6 @@ volumes:
   iotdb_data:
   kafka_data:
   qdrant_data:
-  grafana_data:
   superset_data:
   models:          # shared GGUF model cache — bind-mounted from ./models/
     driver: local
@@ -508,32 +507,7 @@ services:
         condition: service_started
 
   # ==========================================================================
-  # 12. Grafana  -  operational dashboards (telemetry, alarms, AI insights)
-  # ==========================================================================
-  grafana:
-    image: grafana/grafana:11.1.0
-    container_name: grafana
-    restart: unless-stopped
-    logging: *default-logging
-    profiles: ["core", "all"]
-    networks: [iot-net]
-    ports:
-      - "3000:3000"
-    env_file: [.env]
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
-      GF_INSTALL_PLUGINS: grafana-clock-panel
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  # ==========================================================================
-  # 13. Apache Superset  -  BI / advanced analytics
+  # 12. Apache Superset  -  BI / advanced analytics
   # ==========================================================================
   superset:
     build:
