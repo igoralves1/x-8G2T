@@ -471,7 +471,7 @@ to external **tools, data and capabilities** through a uniform interface. An *MC
 server* advertises a set of tools (name + JSON-schema + description); an *MCP
 client* lists those tools and calls them. It is the same idea as "function
 calling," but standardized and transport-agnostic, so any MCP-capable client
-(this platform, Claude Desktop, IDEs, etc.) can reuse the same server.
+(this platform, desktop MCP hosts, IDEs, etc.) can reuse the same server.
 
 ### Why this platform uses a local MCP server
 We deliberately keep the **statistics out of the LLM**. Language models are good
