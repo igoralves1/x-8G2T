@@ -22,12 +22,21 @@ if [[ ! -f "$MODEL_PATH" ]]; then
 fi
 
 COMMON=( --host "$HOST" --port "$PORT" -m "$MODEL_PATH"
-         --n-gpu-layers "$NGL" --ctx-size "$CTX_SIZE" --parallel "$PARALLEL" )
+         --ctx-size "$CTX_SIZE" --parallel "$PARALLEL" )
+
+# NGL=auto  -> let llama.cpp fit as many layers as the (unified) memory allows,
+#              offloading the rest to CPU. Robust on the memory-constrained Orin
+#              Nano where forcing all layers onto the GPU/NvMap pool can OOM.
+# NGL=<int> -> force that many layers onto the GPU (999 = all).
+if [[ "$NGL" != "auto" ]]; then
+  COMMON+=( --n-gpu-layers "$NGL" )
+fi
 
 case "$MODE" in
   llm)
     echo ">> Starting LLM server: $MODEL_PATH"
-    exec llama-server "${COMMON[@]}" --flash-attn
+    # Newer llama.cpp requires an explicit value: --flash-attn on|off|auto
+    exec llama-server "${COMMON[@]}" --flash-attn on
     ;;
   vlm)
     MMPROJ_PATH="${MODEL_DIR}/${MMPROJ_FILE:?MMPROJ_FILE env var is required for vlm mode}"
